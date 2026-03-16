@@ -1,0 +1,42 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Heathrow - Communication Hub In The Terminal
+# A unified TUI for all your communication sources
+# Author: Geir Isene with Claude Code
+# License: Public Domain
+
+CRASH_LOG = '/tmp/heathrow-crash.log'
+
+require_relative '../lib/heathrow'
+
+begin
+  heathrow = Heathrow::Application.new
+  heathrow.run
+rescue Interrupt
+  # Restore terminal
+  system('stty sane 2>/dev/null')
+  print "\e[?25h\e[0m\e[2J\e[H"
+  $stdout.flush
+  exit 0
+rescue => e
+  # Log full crash details
+  crash = "#{Time.now.strftime('%Y-%m-%d %H:%M:%S')} CRASH in #{e.backtrace&.first}\n"
+  crash << "  #{e.class}: #{e.message}\n"
+  crash << "  Backtrace:\n"
+  e.backtrace&.first(20)&.each { |l| crash << "    #{l}\n" }
+  crash << "\n"
+  File.write(CRASH_LOG, crash, mode: 'a')
+
+  # Restore terminal fully (stty sane handles raw mode reset)
+  system('stty sane 2>/dev/null')
+  print "\e[?25h\e[0m\e[2J\e[H"
+  $stdout.flush
+
+  # Print to stderr (rsh captures this better than stdout)
+  loc = e.backtrace&.first&.sub(/^.*lib\/heathrow\//, '')
+  $stderr.puts "Heathrow crashed: #{e.class}: #{e.message}"
+  $stderr.puts "  at #{loc}"
+  $stderr.puts "  Full log: #{CRASH_LOG}"
+  exit 1
+end

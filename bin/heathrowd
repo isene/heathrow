@@ -1,0 +1,283 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Heathrow Daemon - Background polling service
+# This runs independently of any Heathrow UI instances
+# Author: Geir Isene with Claude Code
+# License: Public Domain
+
+require 'fileutils'
+require 'logger'
+require 'optparse'
+require_relative '../lib/heathrow'
+
+class HeathrowDaemon
+  def initialize(options = {})
+    @options = {
+      daemonize: false,
+      pid_file: File.join(HEATHROW_HOME, 'heathrowd.pid'),
+      log_file: File.join(HEATHROW_LOGS, 'heathrowd.log'),
+      poll_interval: 30 # Default 30 seconds between polling cycles
+    }.merge(options)
+    
+    setup_logging
+    setup_components
+  end
+  
+  def start
+    if running?
+      @logger.info "Heathrow daemon already running (PID: #{read_pid})"
+      puts "Heathrow daemon already running"
+      return false
+    end
+    
+    if @options[:daemonize]
+      daemonize
+    end
+    
+    write_pid
+    setup_signal_handlers
+    
+    @logger.info "Starting Heathrow daemon (PID: #{Process.pid})"
+    puts "Starting Heathrow daemon..." unless @options[:daemonize]
+    
+    run_daemon
+  end
+  
+  def stop
+    unless running?
+      puts "Heathrow daemon not running"
+      return false
+    end
+    
+    pid = read_pid
+    begin
+      Process.kill('TERM', pid)
+      puts "Stopping Heathrow daemon (PID: #{pid})"
+      
+      # Wait for process to stop
+      30.times do
+        sleep 0.1
+        break unless running?
+      end
+      
+      if running?
+        Process.kill('KILL', pid)
+        puts "Force killed Heathrow daemon"
+      end
+      
+      cleanup_pid
+      true
+    rescue Errno::ESRCH
+      # Process already stopped
+      cleanup_pid
+      puts "Heathrow daemon was not running"
+      false
+    end
+  end
+  
+  def status
+    if running?
+      pid = read_pid
+      puts "Heathrow daemon running (PID: #{pid})"
+      true
+    else
+      puts "Heathrow daemon not running"
+      false
+    end
+  end
+  
+  private
+  
+  def setup_logging
+    @logger = Logger.new(@options[:log_file])
+    @logger.level = Logger::INFO
+    @logger.formatter = proc do |severity, datetime, progname, msg|
+      "[#{datetime.strftime('%Y-%m-%d %H:%M:%S')}] #{severity}: #{msg}\n"
+    end
+  end
+  
+  def setup_components
+    @db = Heathrow::Database.new
+    @plugin_manager = Heathrow::PluginManager.new(@db)
+    @running = false
+  end
+  
+  def daemonize
+    # Fork and detach from terminal
+    Process.fork && exit
+    Process.setsid
+    Process.fork && exit
+    
+    # Redirect standard streams
+    STDIN.reopen('/dev/null')
+    STDOUT.reopen('/dev/null', 'w')
+    STDERR.reopen('/dev/null', 'w')
+  end
+  
+  def write_pid
+    File.write(@options[:pid_file], Process.pid.to_s)
+  end
+  
+  def read_pid
+    return nil unless File.exist?(@options[:pid_file])
+    File.read(@options[:pid_file]).strip.to_i
+  end
+  
+  def cleanup_pid
+    File.delete(@options[:pid_file]) if File.exist?(@options[:pid_file])
+  end
+  
+  def running?
+    return false unless File.exist?(@options[:pid_file])
+    
+    pid = read_pid
+    return false unless pid && pid > 0
+    
+    begin
+      Process.kill(0, pid)
+      true
+    rescue Errno::ESRCH
+      # Process doesn't exist
+      cleanup_pid
+      false
+    end
+  end
+  
+  def setup_signal_handlers
+    %w[TERM INT].each do |signal|
+      Signal.trap(signal) do
+        @logger.info "Received #{signal} signal, shutting down..."
+        @running = false
+      end
+    end
+    
+    Signal.trap('HUP') do
+      @logger.info "Received HUP signal, reloading configuration..."
+      # Could reload config here if needed
+    end
+  end
+  
+  def run_daemon
+    @running = true
+    @logger.info "Daemon started, polling every #{@options[:poll_interval]} seconds"
+    
+    while @running
+      begin
+        poll_all_sources
+        sleep @options[:poll_interval]
+      rescue StandardError => e
+        @logger.error "Error in daemon loop: #{e.message}"
+        @logger.error e.backtrace.join("\n")
+        sleep 5 # Brief pause on error
+      end
+    end
+    
+    @logger.info "Daemon shutting down"
+    cleanup_pid
+  end
+  
+  def poll_all_sources
+    sources = @db.get_sources(true) # Only enabled sources
+    @logger.debug "Checking #{sources.size} enabled sources"
+    
+    sources.each do |source_data|
+      begin
+        poll_source(source_data)
+      rescue StandardError => e
+        @logger.error "Error polling source #{source_data['name']}: #{e.message}"
+      end
+    end
+  end
+  
+  def poll_source(source_data)
+    source = Heathrow::Source.new(
+      id: source_data['id'],
+      type: source_data['type'],
+      name: source_data['name'],
+      config: source_data['config'],
+      enabled: source_data['enabled'] == 1,
+      poll_interval: source_data['poll_interval'],
+      last_poll: source_data['last_poll']
+    )
+    
+    return unless source.should_poll?
+    
+    @logger.debug "Polling source: #{source.name}"
+    
+    plugin = @plugin_manager.create_source(source.type, source)
+    return unless plugin
+    
+    messages = plugin.fetch_messages
+    new_message_count = 0
+    
+    messages.each do |msg_data|
+      message = Heathrow::Message.new(msg_data)
+      message.source_id = source.id
+      message.source_type = source.type
+      
+      if @db.insert_message(message.to_h.values)
+        new_message_count += 1
+      end
+    end
+    
+    @db.update_source_poll_time(source.id)
+    
+    if new_message_count > 0
+      @logger.info "Fetched #{new_message_count} new messages from #{source.name}"
+    else
+      @logger.debug "No new messages from #{source.name}"
+    end
+  end
+end
+
+# Command line interface
+if __FILE__ == $0
+  options = {}
+  
+  OptionParser.new do |opts|
+    opts.banner = "Usage: heathrowd [options] {start|stop|restart|status}"
+    
+    opts.on("-d", "--daemon", "Run as daemon") do
+      options[:daemonize] = true
+    end
+    
+    opts.on("-i", "--interval SECONDS", Integer, "Polling interval (default: 30)") do |interval|
+      options[:poll_interval] = interval
+    end
+    
+    opts.on("-p", "--pid FILE", "PID file location") do |pid_file|
+      options[:pid_file] = pid_file
+    end
+    
+    opts.on("-l", "--log FILE", "Log file location") do |log_file|
+      options[:log_file] = log_file
+    end
+    
+    opts.on("-h", "--help", "Show this help") do
+      puts opts
+      exit
+    end
+  end.parse!
+  
+  command = ARGV[0]
+  unless %w[start stop restart status].include?(command)
+    puts "Usage: heathrowd [options] {start|stop|restart|status}"
+    exit 1
+  end
+  
+  daemon = HeathrowDaemon.new(options)
+  
+  case command
+  when 'start'
+    daemon.start
+  when 'stop'
+    daemon.stop
+  when 'restart'
+    daemon.stop
+    sleep 1
+    daemon.start
+  when 'status'
+    daemon.status
+  end
+end
