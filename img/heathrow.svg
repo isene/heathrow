@@ -9,49 +9,87 @@
       <stop offset="100%" style="stop-color:#c49000"/>
     </linearGradient>
   </defs>
+
+  <style>
+    @keyframes pulse { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+    @keyframes spin { from { transform-origin: 128px 128px; transform: rotate(0deg); } to { transform-origin: 128px 128px; transform: rotate(360deg); } }
+    @keyframes dot-travel {
+      0% { opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    .hub-ring { animation: pulse 3s ease-in-out infinite; }
+    .outer-ring { animation: spin 30s linear infinite; }
+    .dot1 { animation: dot-travel 2.5s ease-in-out infinite; }
+    .dot2 { animation: dot-travel 2.5s ease-in-out 0.4s infinite; }
+    .dot3 { animation: dot-travel 2.5s ease-in-out 0.8s infinite; }
+    .dot4 { animation: dot-travel 2.5s ease-in-out 1.2s infinite; }
+    .dot5 { animation: dot-travel 2.5s ease-in-out 1.6s infinite; }
+    .dot6 { animation: dot-travel 2.5s ease-in-out 2.0s infinite; }
+  </style>
+
   <!-- Background circle -->
   <circle cx="128" cy="128" r="120" fill="url(#bg)" stroke="#e2b714" stroke-width="3"/>
-  <!-- Hub ring -->
-  <circle cx="128" cy="128" r="45" fill="none" stroke="url(#glow)" stroke-width="4" opacity="0.8"/>
-  <circle cx="128" cy="128" r="8" fill="#e2b714"/>
-  <!-- Spokes to source icons -->
-  <!-- Top: Email -->
-  <line x1="128" y1="83" x2="128" y2="48" stroke="#e2b714" stroke-width="2" opacity="0.6"/>
+
+  <!-- Outer decorative ring (slow spin) -->
+  <circle class="outer-ring" cx="128" cy="128" r="95" fill="none" stroke="#e2b714" stroke-width="0.5" stroke-dasharray="8 12" opacity="0.3"/>
+
+  <!-- Hub ring (pulsing) -->
+  <circle class="hub-ring" cx="128" cy="128" r="38" fill="none" stroke="url(#glow)" stroke-width="3"/>
+  <!-- Hub center dot -->
+  <circle cx="128" cy="128" r="6" fill="#e2b714" opacity="0.9"/>
+
+  <!-- Spokes with traveling dots -->
+
+  <!-- Top: Email (gold) -->
+  <line x1="128" y1="90" x2="128" y2="52" stroke="#e2b714" stroke-width="1.5" opacity="0.4"/>
+  <circle class="dot1" cx="128" cy="70" r="2" fill="#e2b714"/>
   <rect x="116" y="34" width="24" height="16" rx="2" fill="none" stroke="#e2b714" stroke-width="2"/>
   <polyline points="116,36 128,44 140,36" fill="none" stroke="#e2b714" stroke-width="1.5"/>
-  <!-- Top-right: Chat bubble -->
-  <line x1="160" y1="96" x2="190" y2="62" stroke="#39c" stroke-width="2" opacity="0.6"/>
-  <rect x="180" y="46" width="26" height="18" rx="4" fill="none" stroke="#39c" stroke-width="2"/>
-  <circle cx="188" cy="55" r="1.5" fill="#39c"/>
-  <circle cx="193" cy="55" r="1.5" fill="#39c"/>
-  <circle cx="198" cy="55" r="1.5" fill="#39c"/>
-  <!-- Right: RSS -->
-  <line x1="173" y1="128" x2="210" y2="128" stroke="#f80" stroke-width="2" opacity="0.6"/>
-  <circle cx="224" cy="128" r="3" fill="#f80"/>
-  <path d="M215,118 A16,16 0 0,1 231,134" fill="none" stroke="#f80" stroke-width="2.5"/>
-  <path d="M211,112 A24,24 0 0,1 237,138" fill="none" stroke="#f80" stroke-width="2"/>
-  <!-- Bottom-right: Discord/Chat -->
-  <line x1="160" y1="160" x2="188" y2="192" stroke="#77d" stroke-width="2" opacity="0.6"/>
-  <text x="190" y="202" font-family="sans-serif" font-size="22" font-weight="bold" fill="#77d">#</text>
-  <!-- Bottom: Terminal -->
-  <line x1="128" y1="173" x2="128" y2="204" stroke="#4c4" stroke-width="2" opacity="0.6"/>
+
+  <!-- Top-right: Chat (blue) -->
+  <line x1="155" y1="100" x2="185" y2="66" stroke="#39c" stroke-width="1.5" opacity="0.4"/>
+  <circle class="dot2" cx="170" cy="83" r="2" fill="#39c"/>
+  <rect x="178" y="48" width="24" height="17" rx="4" fill="none" stroke="#39c" stroke-width="2"/>
+  <circle cx="186" cy="57" r="1.5" fill="#39c"/>
+  <circle cx="190" cy="57" r="1.5" fill="#39c"/>
+  <circle cx="194" cy="57" r="1.5" fill="#39c"/>
+
+  <!-- Right: RSS (orange) -->
+  <line x1="166" y1="128" x2="206" y2="128" stroke="#f80" stroke-width="1.5" opacity="0.4"/>
+  <circle class="dot3" cx="186" cy="128" r="2" fill="#f80"/>
+  <circle cx="220" cy="128" r="3" fill="#f80"/>
+  <path d="M212,119 A14,14 0 0,1 228,135" fill="none" stroke="#f80" stroke-width="2.5"/>
+  <path d="M208,113 A22,22 0 0,1 234,139" fill="none" stroke="#f80" stroke-width="1.5"/>
+
+  <!-- Bottom-right: Discord (purple) -->
+  <line x1="155" y1="156" x2="184" y2="188" stroke="#77d" stroke-width="1.5" opacity="0.4"/>
+  <circle class="dot4" cx="170" cy="172" r="2" fill="#77d"/>
+  <text x="186" y="200" font-family="sans-serif" font-size="22" font-weight="bold" fill="#77d">#</text>
+
+  <!-- Bottom: Terminal (green) -->
+  <line x1="128" y1="166" x2="128" y2="204" stroke="#4c4" stroke-width="1.5" opacity="0.4"/>
+  <circle class="dot5" cx="128" cy="186" r="2" fill="#4c4"/>
   <rect x="110" y="206" width="36" height="24" rx="3" fill="none" stroke="#4c4" stroke-width="2"/>
   <text x="116" y="224" font-family="monospace" font-size="12" fill="#4c4">&gt;_</text>
-  <!-- Bottom-left: Phone/SMS -->
-  <line x1="96" y1="160" x2="68" y2="192" stroke="#5b5" stroke-width="2" opacity="0.6"/>
-  <rect x="54" y="188" width="18" height="28" rx="3" fill="none" stroke="#5b5" stroke-width="2"/>
-  <circle cx="63" cy="212" r="2" fill="#5b5"/>
-  <!-- Left: Reddit/Forum -->
-  <line x1="83" y1="128" x2="46" y2="128" stroke="#e55" stroke-width="2" opacity="0.6"/>
-  <circle cx="34" cy="128" r="12" fill="none" stroke="#e55" stroke-width="2"/>
-  <circle cx="30" cy="124" r="2" fill="#e55"/>
-  <circle cx="38" cy="124" r="2" fill="#e55"/>
-  <path d="M29,131 Q34,136 39,131" fill="none" stroke="#e55" stroke-width="1.5"/>
-  <!-- Top-left: Web -->
-  <line x1="96" y1="96" x2="68" y2="64" stroke="#a8e" stroke-width="2" opacity="0.6"/>
-  <circle cx="56" cy="52" r="14" fill="none" stroke="#a8e" stroke-width="2"/>
-  <ellipse cx="56" cy="52" rx="6" ry="14" fill="none" stroke="#a8e" stroke-width="1"/>
-  <line x1="42" y1="52" x2="70" y2="52" stroke="#a8e" stroke-width="1"/>
-  <!-- Center H -->
-  <text x="118" y="136" font-family="sans-serif" font-size="28" font-weight="bold" fill="#e2b714">H</text>
+
+  <!-- Bottom-left: Phone (teal) -->
+  <line x1="101" y1="156" x2="72" y2="188" stroke="#5b5" stroke-width="1.5" opacity="0.4"/>
+  <circle class="dot6" cx="86" cy="172" r="2" fill="#5b5"/>
+  <rect x="58" y="188" width="18" height="28" rx="3" fill="none" stroke="#5b5" stroke-width="2"/>
+  <circle cx="67" cy="212" r="2" fill="#5b5"/>
+
+  <!-- Left: Forum (red) -->
+  <line x1="90" y1="128" x2="50" y2="128" stroke="#e55" stroke-width="1.5" opacity="0.4"/>
+  <circle cx="38" cy="128" r="12" fill="none" stroke="#e55" stroke-width="2"/>
+  <circle cx="34" cy="124" r="2" fill="#e55"/>
+  <circle cx="42" cy="124" r="2" fill="#e55"/>
+  <path d="M33,131 Q38,136 43,131" fill="none" stroke="#e55" stroke-width="1.5"/>
+
+  <!-- Top-left: Web (lavender) -->
+  <line x1="101" y1="100" x2="72" y2="68" stroke="#a8e" stroke-width="1.5" opacity="0.4"/>
+  <circle cx="60" cy="56" r="14" fill="none" stroke="#a8e" stroke-width="2"/>
+  <ellipse cx="60" cy="56" rx="6" ry="14" fill="none" stroke="#a8e" stroke-width="1"/>
+  <line x1="46" y1="56" x2="74" y2="56" stroke="#a8e" stroke-width="1"/>
 </svg>

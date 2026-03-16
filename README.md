@@ -14,9 +14,13 @@ A unified TUI for all your communication. Like Heathrow Airport, every message r
 
 ## The Solution
 
-One inbox. All sources. Full keyboard control.
+All sources in one place. Create your custom views. Full keyboard control.
 
 ![RSS Threaded View](img/rss_threaded.png)
+
+## Background
+
+In 2007 I had the idea of One Communication Hub to rule them all. Now, with Claude Code, it was efficient to realize that idea. It has now replaced [mutt](http://mutt.org/) that I've been using since 2003, my RSS readers ([newsboat](https://newsboat.org/index.html) of late) and many other apps. Heathrow now functions as my communication hub :)
 
 ## Features
 
