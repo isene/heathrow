@@ -27,7 +27,8 @@ module Heathrow
     # Compose a forward of a message
     def compose_forward
       template = build_forward_template
-      content = edit_in_editor(template)
+      # Cursor on "To: " line (line 2)
+      content = edit_in_editor(template, cursor_line: 2)
       return nil if content.nil? || content.strip.empty?
       parse_composed_message(content)
     end

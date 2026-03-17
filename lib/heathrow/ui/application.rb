@@ -3702,6 +3702,7 @@ module Heathrow
     def show_folder_browser
       @in_folder_browser = true
       @folder_browser_index = 0
+      @panes[:top].bg = @topcolor
       @folder_collapsed ||= {}
       @folder_count_cache = {}  # Fresh counts each time
       @browser_favorites = nil  # Fresh favorites read
@@ -3969,6 +3970,7 @@ module Heathrow
       favorites = get_favorite_folders
       @in_folder_browser = true
       @folder_browser_index = 0
+      @panes[:top].bg = @topcolor
       @folder_count_cache = {}  # Fresh counts each time
 
       # Build display from favorites only (no DB queries — counts fetched on select)
@@ -4250,6 +4252,13 @@ module Heathrow
       msg['folder'] = dest
       msg['metadata'] = metadata
       msg['labels'] = labels
+
+      # Mark as read (we've seen it if we're filing it)
+      if msg['is_read'].to_i == 0
+        @db.mark_as_read(msg['id'])
+        msg['is_read'] = 1
+        sync_maildir_flag(msg, 'S', true)
+      end
     end
 
     # ── Save by browsing folders (sB) ──
@@ -4517,7 +4526,7 @@ module Heathrow
     def ai_assistant
       msg = current_message
       return unless msg && !msg['is_header'] && !msg['is_channel_header'] && !msg['is_thread_header']
-      ensure_full_message(msg)
+      msg = ensure_full_message(msg)
 
       # Build message context
       context = ai_message_context(msg)
@@ -4963,9 +4972,19 @@ module Heathrow
     end
 
     def ensure_full_message(msg)
-      if msg && msg['id'] && !msg.key?('content') && !msg['is_header']
+      if msg && msg['id'] && !msg['_full_loaded'] && !msg['is_header']
         full = @db.get_message(msg['id'])
-        msg.merge!(full) if full
+        if full
+          if msg.frozen?
+            # Replace frozen hash in filtered_messages with mutable copy
+            idx = @filtered_messages.index { |m| m.equal?(msg) }
+            msg = full.merge('_full_loaded' => true)
+            @filtered_messages[idx] = msg if idx
+          else
+            msg.merge!(full)
+            msg['_full_loaded'] = true
+          end
+        end
       end
       msg
     end
@@ -4975,7 +4994,7 @@ module Heathrow
     def reply_to_message(force_editor: false)
       msg = current_message
       return unless msg
-      ensure_full_message(msg)
+      msg = ensure_full_message(msg)
 
       # Don't allow replying to header messages
       if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header'] || msg['is_dm_header']
@@ -5004,15 +5023,15 @@ module Heathrow
         @panes[:bottom].refresh
 
         composed = composer.compose_reply(false)
+        setup_display
+        create_panes
+        render_all
         if composed
           finalize_compose(source, composed, "Reply cancelled")
         else
           set_feedback("Reply cancelled", 245, 1)
         end
       end
-
-      render_message_list
-      render_bottom_bar
     end
 
     def chat_reply_context(msg, source_type)
@@ -5088,7 +5107,7 @@ module Heathrow
     def reply_all_to_message
       msg = current_message
       return unless msg
-      ensure_full_message(msg)
+      msg = ensure_full_message(msg)
       source_id = msg['source_id']
       
       # Check if source supports replying
@@ -5106,20 +5125,21 @@ module Heathrow
       # Compose the reply
       composed = composer.compose_reply(true)
 
+      setup_display
+      create_panes
+      render_all
       if composed
         finalize_compose(source, composed, "Reply-all cancelled")
       else
         set_feedback("Reply-all cancelled", 245, 1)
       end
-
-      render_bottom_bar
     end
 
     def edit_message_content
       msg = current_message
       return unless msg
       return if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header']
-      ensure_full_message(msg)
+      msg = ensure_full_message(msg)
 
       source_id = msg['source_id']
       source = @db.get_source(source_id)
@@ -5147,7 +5167,7 @@ module Heathrow
     def forward_message
       msg = current_message
       return unless msg
-      ensure_full_message(msg)
+      msg = ensure_full_message(msg)
       source_id = msg['source_id']
       
       # Check if source supports sending
@@ -5162,18 +5182,59 @@ module Heathrow
       @panes[:bottom].text = " Opening editor to forward message...".fg(226)
       @panes[:bottom].refresh
 
+      # Extract attachments BEFORE editor
+      orig_attachments = extract_original_attachments(msg)
+
       # Compose the forward
       composed = composer.compose_forward
 
+      # Rebuild panes after editor (vim clears the screen)
+      setup_display
+      create_panes
+      render_all
+
       if composed
+        # Include original attachments
+        composed[:attachments] = orig_attachments if orig_attachments && !orig_attachments.empty?
         finalize_compose(source, composed, "Forward cancelled")
       else
         set_feedback("Forward cancelled", 245, 1)
       end
-
-      render_bottom_bar
     end
     
+    # Extract original attachments from a message for forwarding
+    def extract_original_attachments(msg)
+      metadata = msg['metadata']
+      metadata = JSON.parse(metadata) if metadata.is_a?(String) rescue nil
+      return nil unless metadata.is_a?(Hash)
+
+      file_path = metadata['maildir_file']
+      return nil unless file_path && File.exist?(file_path)
+
+      require 'mail'
+      require 'tmpdir'
+      mail = Mail.read(file_path)
+      return nil if mail.attachments.empty?
+
+      tmp_dir = File.join(Dir.tmpdir, "heathrow-fwd-#{Process.pid}")
+      FileUtils.mkdir_p(tmp_dir)
+
+      paths = []
+      mail.attachments.each do |att|
+        next unless att.filename
+        out = File.join(tmp_dir, att.filename)
+        File.write(out, att.decoded)
+        paths << out
+      end
+      paths.empty? ? nil : paths
+    rescue => e
+      File.open('/tmp/heathrow-crash.log', 'a') { |f|
+        f.puts "#{Time.now.strftime('%Y-%m-%d %H:%M:%S')} extract_attachments: #{e.class}: #{e.message}"
+        f.puts "  #{e.backtrace&.first(3)&.join("\n  ")}"
+      }
+      nil
+    end
+
     def compose_new_message
       # Build list of sendable channels from all DB sources
       channels = []
@@ -5250,6 +5311,9 @@ module Heathrow
 
         composed = composer.compose_new
       end
+      setup_display
+      create_panes
+      render_all
       if composed
         finalize_compose(source, composed, "Message cancelled")
       else
@@ -5402,8 +5466,10 @@ module Heathrow
       setup_display
       create_panes
       render_all
+      pending_attachments = Array(composed[:attachments]).dup
       loop do
-        attachments = prompt_attachments(composed: composed)
+        attachments = prompt_attachments(pending_attachments, composed: composed)
+        pending_attachments = []  # Only seed on first iteration
         case attachments
         when :postpone
           postpone_message(source, composed)
@@ -7719,7 +7785,7 @@ Required: URL, optional CSS selector
 
       msg = current_message
       return unless msg
-      ensure_full_message(msg)
+      msg = ensure_full_message(msg)
 
       http_urls = []
 

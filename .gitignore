@@ -18,17 +18,26 @@
 /lib/bundler/man/
 .bundle/
 
-# Chitt specific
-~/.chitt/
+# Heathrow data
+~/.heathrow/
 *.db
 *.db-shm
 *.db-wal
 /logs/
 /attachments/
 
-# Environment
+# Secrets and credentials
 .env
 .env.local
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+token.json
+*_secret*
+*_token*
 
 # Editor directories
 .vscode/
