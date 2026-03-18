@@ -4003,7 +4003,7 @@ module Heathrow
         when 'k', 'UP'
           @folder_browser_index = (@folder_browser_index - 1) % @folder_display.size if @folder_display.size > 0
           render_folder_browser
-        when 'ENTER'
+        when 'l', 'RIGHT', 'ENTER'
           folder = @folder_display[@folder_browser_index]
           if folder
             open_folder(folder[:full_name])
@@ -4318,6 +4318,9 @@ module Heathrow
             @folder_collapsed.delete(folder[:full_name])
             @folder_display = flatten_folder_tree(@folder_tree, '', 0, @folder_collapsed)
             render_save_folder_picker(idx, title)
+          elsif folder
+            render_all
+            return folder[:full_name]
           end
         when 'h', 'LEFT'
           folder = @folder_display[idx]
@@ -7763,12 +7766,13 @@ Required: URL, optional CSS selector
       tags.each do |tag|
         src = tag[/src=["']([^"']+)["']/i, 1]
         next unless src
-        # Skip by URL patterns
-        next if src =~ /track|pixel|spacer|beacon|\.gif$/i
-        # Skip by HTML dimensions (1x1 tracking pixels, tiny icons)
+        # Skip by URL patterns (tracking, icons, social media badges)
+        next if src =~ /track|pixel|spacer|beacon|\.gif$|icon|logo|badge|button|social|facebook|linkedin|twitter|instagram/i
+        # Skip by HTML dimensions (tracking pixels and small icons)
         w = tag[/width=["']?(\d+)/i, 1]&.to_i
         h = tag[/height=["']?(\d+)/i, 1]&.to_i
-        next if w && h && (w <= 2 || h <= 2)
+        next if w && w <= 40
+        next if h && h <= 40
         urls << src
       end
       urls
@@ -7850,7 +7854,7 @@ Required: URL, optional CSS selector
       # Clear right pane and show images
       n = image_paths.size
       label = n == 1 ? "1 image" : "#{n} images"
-      @panes[:right].text = " [#{label}]  Press I to return".fg(245)
+      @panes[:right].text = " [#{label}]  Press ESC to return".fg(245)
       @panes[:right].full_refresh  # Full refresh to clear image area
 
       pane_w = @panes[:right].w - 2
