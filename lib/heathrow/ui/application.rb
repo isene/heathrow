@@ -1979,28 +1979,28 @@ module Heathrow
         end
       else
         # Regular message display
-        header << "From: #{msg['sender']}".fg(39) if msg['sender']
+        header << "From: #{msg['sender']}".fg(2) if msg['sender']
         # Show recipients (To field)
         to = msg['recipients'] || msg['recipient']
         if to
           to_list = to.is_a?(String) ? (JSON.parse(to) rescue [to]) : to
           to_str = to_list.is_a?(Array) ? to_list.join(', ') : to_list.to_s
-          header << "To: #{to_str}".fg(45) unless to_str.empty?
+          header << "To: #{to_str}".fg(2) unless to_str.empty?
         end
         # Show CC recipients
         cc = msg['cc']
         if cc
           cc_list = cc.is_a?(String) ? (JSON.parse(cc) rescue [cc]) : cc
           cc_str = cc_list.is_a?(Array) ? cc_list.join(', ') : cc_list.to_s
-          header << "Cc: #{cc_str}".fg(45) unless cc_str.empty?
+          header << "Cc: #{cc_str}".fg(2) unless cc_str.empty?
         end
         # For weechat, show channel name from metadata instead of content preview
         meta = msg['metadata']
         meta = JSON.parse(meta) if meta.is_a?(String) rescue nil
         if meta.is_a?(Hash) && meta['channel_name']
-          header << "Subject: #{meta['channel_name']}".b.fg(226)
+          header << "Subject: #{meta['channel_name']}".b.fg(1)
         elsif msg['subject']
-          header << "Subject: #{msg['subject']}".b.fg(226)
+          header << "Subject: #{msg['subject']}".b.fg(1)
         end
       end
       
@@ -7674,8 +7674,9 @@ Required: URL, optional CSS selector
     def colorize_email_content(content)
       quote_colors = [theme[:quote1] || 114, theme[:quote2] || 180,
                       theme[:quote3] || 139, theme[:quote4] || 109]
-      sig_color = theme[:sig] || 242
-      link_color = theme[:accent] || 33
+      sig_color = theme[:sig] || 5       # magenta (vim PreProc)
+      link_color = theme[:link] || 4     # blue (vim String)
+      email_color = theme[:email] || 5   # magenta (vim Special)
       in_signature = false
 
       content.lines.map do |line|
