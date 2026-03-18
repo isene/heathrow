@@ -533,7 +533,7 @@ module Heathrow
         if (source_type || msg['source_type']) == 'rss'
           sender = ''  # Don't show sender for RSS
         else
-          sender = sender[0..14] if sender.length > 15
+          sender = truncate_to_width(sender, 14) + '…' if Rcurses.display_width(sender) > 15
         end
         
         # For Discord/Slack channels, show content not channel name
@@ -558,14 +558,14 @@ module Heathrow
         if sender.empty?
           prefix = "#{unread} "
         else
-          prefix = "#{unread} #{sender.ljust(15)} "
+          prefix = "#{unread} #{sender + ' ' * [15 - Rcurses.display_width(sender), 0].max} "
         end
 
         # Truncate content to fit single line (prefix + 2 for nflag+ind from finalize_line)
         pane_width = @panes[:left].w - 5
-        available = pane_width - prefix.length
-        if display_content && display_content.length > available && available > 0
-          display_content = display_content[0..(available-2)] + "…"
+        available = pane_width - Rcurses.display_width(prefix)
+        if display_content && Rcurses.display_width(display_content) > available && available > 0
+          display_content = truncate_to_width(display_content, available - 1) + "…"
         end
 
         finalize_line(msg, selected, prefix, display_content, color)
@@ -574,17 +574,17 @@ module Heathrow
       # Format a thread reply
       def format_thread_reply(msg, selected, indent)
         sender = display_sender(msg)
-        sender = sender[0..12] if sender.length > 12
-        
+        sender = truncate_to_width(sender, 12) if Rcurses.display_width(sender) > 12
+
         content = msg['content'] || ''
         content = content.gsub(/\n/, ' ')
-        
+
         # Truncate based on pane width
         pane_width = @panes[:left].w - 5
-        used_space = 2 + indent.length + 3 + sender.length + 2  # arrow + indent + └─ + sender + : 
+        used_space = 2 + Rcurses.display_width(indent) + 3 + Rcurses.display_width(sender) + 2
         available = pane_width - used_space
-        if content.length > available && available > 0
-          content = content[0..(available-2)] + "…"
+        if Rcurses.display_width(content) > available && available > 0
+          content = truncate_to_width(content, available - 1) + "…"
         end
         
         prefix = "#{indent}└─ #{sender}: "
@@ -599,17 +599,20 @@ module Heathrow
 
         timestamp = (parse_timestamp(msg['timestamp']) || "").ljust(6)
         sender_max = 15
-        sender = sender.length > sender_max ? sender[0..sender_max-2] + '…' : sender.ljust(sender_max)
+        sdw = Rcurses.display_width(sender)
+        sender = sdw > sender_max ? truncate_to_width(sender, sender_max - 1) + '…' : sender + ' ' * [sender_max - sdw, 0].max
         child_indent = indent.empty? ? "" : "    "
         prefix = "#{child_indent}#{timestamp} #{icon} #{sender} "
 
         content = msg['subject'] || msg['content'] || ''
+        content = content.dup if content.frozen?
+        content = content.encode('UTF-8', invalid: :replace, undef: :replace, replace: '?') rescue content.force_encoding('UTF-8').scrub('?')
         content = content.gsub(/\n/, ' ')
 
-        used_space = prefix.length + 1
+        used_space = Rcurses.display_width(prefix) + 1
         available = pane_width - used_space
-        if content.length > available && available > 0
-          content = content[0..(available-2)] + "…"
+        if Rcurses.display_width(content) > available && available > 0
+          content = truncate_to_width(content, available - 1) + "…"
         end
 
         color = get_source_color(msg)
@@ -623,7 +626,8 @@ module Heathrow
 
         # Truncate sender to fixed width
         sender_max = 15
-        sender = sender.length > sender_max ? sender[0..sender_max-2] + '…' : sender.ljust(sender_max)
+        sdw = Rcurses.display_width(sender)
+        sender = sdw > sender_max ? truncate_to_width(sender, sender_max - 1) + '…' : sender + ' ' * [sender_max - sdw, 0].max
 
         content = msg['content'] || ''
         content = content.gsub(/\n/, ' ')
@@ -633,9 +637,9 @@ module Heathrow
 
         # Truncate content to fit single line
         pane_width = @panes[:left].w - 5
-        available = pane_width - prefix.length
-        if content.length > available && available > 0
-          content = content[0..(available-2)] + "…"
+        available = pane_width - Rcurses.display_width(prefix)
+        if Rcurses.display_width(content) > available && available > 0
+          content = truncate_to_width(content, available - 1) + "…"
         end
 
         color = get_source_color(msg)

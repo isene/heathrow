@@ -725,6 +725,8 @@ module Heathrow
         page_down
       when 'PgUP'
         page_up
+      when 'L'
+        load_more_messages
       when 'w'
         change_width
       when 'Y'
@@ -1498,28 +1500,32 @@ module Heathrow
       available_width -= 2 if @panes[:left].border  # Extra space for border chars
       available_width -= 3  # Space for N flag + replied flag + indicator column (tag/star/attachment/D)
       
-      # Truncate sender to fit
+      # Truncate sender to fit (use display_width for CJK characters)
       sender_max = 15
-      sender_display = sender.length > sender_max ? sender[0..sender_max-2] + '…' : sender.ljust(sender_max)
-      
+      dw = Rcurses.display_width(sender)
+      sender_display = if dw > sender_max
+        truncate_to_width(sender, sender_max - 1) + '…'
+      else
+        sender + ' ' * [sender_max - dw, 0].max
+      end
+
       # Build the line with timestamp, icon and sender
       icon = respond_to?(:get_source_icon) ? get_source_icon(msg['source_type']) : '•'
       line_prefix = "#{timestamp} #{icon} #{sender_display} "
-      
-      # Calculate remaining space for subject
-      subject_width = available_width - line_prefix.length - 1  # -1 for safety
-      if subject_width > 0 && subject.length > subject_width
-        subject = subject[0..subject_width-2] + '…'
+
+      # Calculate remaining space for subject (use display_width for CJK)
+      prefix_dw = Rcurses.display_width(line_prefix)
+      subject_width = available_width - prefix_dw - 1  # -1 for safety
+      subject_dw = Rcurses.display_width(subject)
+      if subject_width > 0 && subject_dw > subject_width
+        subject = truncate_to_width(subject, subject_width - 1) + '…'
+        subject_dw = Rcurses.display_width(subject)
       end
-      
-      # Format the complete line and pad to full width
-      line = line_prefix + subject
-      # Pad line to full available width so background color spans entire width
-      line = line.ljust(available_width)
-      
-      prefix_part = "#{timestamp} #{icon} #{sender_display} "
+
+      prefix_part = line_prefix
       subject_part = subject.strip
-      padding = " " * [available_width - prefix_part.length - subject_part.length, 0].max
+      total_dw = Rcurses.display_width(prefix_part) + Rcurses.display_width(subject_part)
+      padding = " " * [available_width - total_dw, 0].max
       finalize_line(msg, selected, prefix_part, subject_part, source_color, padding)
     end
     
@@ -1885,7 +1891,7 @@ module Heathrow
       # Show view name instantly
       render_top_bar
 
-      @load_limit = 1000
+      @load_limit = 200
       @filtered_messages = @db.get_messages({}, @load_limit, 0, light: true)
       sort_messages
       @index = 0
@@ -2318,18 +2324,22 @@ module Heathrow
 
     def check_load_more
       return unless @load_limit && @filtered_messages
-      n = @filtered_messages.size
-      return if n < @load_limit  # Haven't hit the limit yet
-      threshold = (@load_limit * 0.95).to_i
-      if @index >= threshold
-        load_more_messages
-      end
+      return if @filtered_messages.size < @load_limit  # Haven't hit the limit yet
+      display_size = message_count
+      return if display_size == 0
+      return unless @index >= display_size - 10
+      return if @last_autoload_index == @index
+      @last_autoload_index = @index
+      load_more_messages
     end
 
     def load_more_messages
       return unless @load_limit
+      # Remember current message so we can restore position after reload
+      cur = current_message
+      cur_id = cur['id'] if cur
       old_count = @filtered_messages.size
-      @load_limit += 1000
+      @load_limit += 200
 
       if @current_folder
         light_cols = "id, source_id, external_id, thread_id, parent_id, sender, sender_name, recipients, subject, substr(content, 1, 200) as content, timestamp, received_at, read AS is_read, starred AS is_starred, archived, labels, metadata, attachments, folder, replied"
@@ -2349,7 +2359,21 @@ module Heathrow
 
       sort_messages
       new_count = @filtered_messages.size
-      set_feedback("Loaded #{new_count} messages (+#{new_count - old_count})", 156, 2) if new_count > old_count
+      return if new_count <= old_count
+
+      # In threaded mode, set pending restore so the threaded rebuild finds our position
+      if @show_threaded && cur_id
+        @pending_restore_id = cur_id
+      end
+
+      # Force threaded view to rebuild organizer with new messages
+      if @show_threaded && respond_to?(:organize_current_messages)
+        organize_current_messages(true)
+      end
+
+      set_feedback("Loaded #{new_count} messages (+#{new_count - old_count})", 156, 2)
+      render_message_list
+      render_top_bar
     end
 
     # Ensure all feeds/channels from a source have at least some messages loaded
@@ -2516,7 +2540,7 @@ module Heathrow
 
       render_top_bar
 
-      @load_limit = 1000
+      @load_limit = 200
       @filtered_messages = @db.get_messages({is_read: false}, @load_limit, 0, light: true)
       sort_messages
       @index = 0
@@ -2563,7 +2587,7 @@ module Heathrow
         @section_order = view[:filters]['section_order'].dup
       end
 
-      @load_limit = 1000
+      @load_limit = 200
       if view && view[:filters] && !view[:filters].empty?
         apply_view_filters(view)
         sort_messages
@@ -3705,6 +3729,7 @@ module Heathrow
 
     def show_folder_browser
       @in_folder_browser = true
+      @in_favorites_browser = false
       @folder_browser_index = 0
       @panes[:top].bg = @topcolor
       @folder_collapsed ||= {}
@@ -3785,8 +3810,10 @@ module Heathrow
         @panes[:right].refresh
       end
 
-      # Update top bar
-      @panes[:top].text = " Heathrow - ".b.fg(255) + "Folder Browser".b.fg(201) + " [#{@folder_display.size} folders]".fg(246)
+      # Update top bar (preserve Favorites title if in favorites mode)
+      browser_title = @in_favorites_browser ? "Favorites" : "Folder Browser"
+      browser_color = @in_favorites_browser ? 226 : 201
+      @panes[:top].text = " Heathrow - ".b.fg(255) + browser_title.b.fg(browser_color) + " [#{@folder_display.size} folders]".fg(246)
       @panes[:top].refresh
 
       # Update bottom bar
@@ -3906,6 +3933,7 @@ module Heathrow
           render_folder_browser
         when 'q', 'ESC', "\e"
           @in_folder_browser = false
+          @in_favorites_browser = false
           render_all
           break
         else
@@ -3922,6 +3950,7 @@ module Heathrow
     # Open a specific folder and show its messages
     def open_folder(folder_name)
       @in_folder_browser = false
+      @in_favorites_browser = false
       @current_folder = folder_name
       @current_view = 'A'
       @in_source_view = false
@@ -3936,7 +3965,7 @@ module Heathrow
       @panes[:bottom].refresh
 
       # Light query with limit (full content loaded lazily when viewing)
-      @load_limit = 1000
+      @load_limit = 200
       light_cols = "id, source_id, external_id, thread_id, parent_id, sender, sender_name, recipients, subject, substr(content, 1, 200) as content, timestamp, received_at, read AS is_read, starred AS is_starred, archived, labels, metadata, attachments, folder, replied"
       results = @db.execute(
         "SELECT #{light_cols} FROM messages WHERE folder >= ? AND folder < ? ORDER BY timestamp DESC LIMIT ?",
@@ -3973,6 +4002,7 @@ module Heathrow
     def show_favorites_browser
       favorites = get_favorite_folders
       @in_folder_browser = true
+      @in_favorites_browser = true
       @folder_browser_index = 0
       @panes[:top].bg = @topcolor
       @folder_count_cache = {}  # Fresh counts each time
@@ -4056,6 +4086,7 @@ module Heathrow
           end
         when 'q', 'ESC', "\e", 'h', 'LEFT'
           @in_folder_browser = false
+          @in_favorites_browser = false
           render_all
           break
         end
@@ -5686,9 +5717,16 @@ module Heathrow
 
           if result[:success]
             if orig_id
+              # Re-read metadata from DB to get current maildir_file path
+              # (poller may have renamed the file since we captured orig_msg)
+              fresh = @db.get_message(orig_id)
+              if fresh
+                orig_msg = fresh
+              end
+              # Sync disk flag first, then DB, to avoid poller race condition
+              sync_maildir_flag(orig_msg, 'R', true) if orig_msg
               @db.execute("UPDATE messages SET replied = 1 WHERE id = ?", [orig_id])
               orig_msg['replied'] = 1 if orig_msg
-              sync_maildir_flag(orig_msg, 'R', true) if orig_msg
             end
             msg = result[:message]
             if composed[:attachments] && !composed[:attachments].empty?
@@ -7957,6 +7995,17 @@ Required: URL, optional CSS selector
     end
 
     # Highlight URLs in a line, applying base_color to non-URL text
+    # Truncate a string to fit within a given display width (CJK-aware)
+    def truncate_to_width(str, max_width)
+      w = 0
+      str.each_char.with_index do |c, i|
+        cw = Rcurses.display_width(c)
+        return str[0...i] if w + cw > max_width
+        w += cw
+      end
+      str
+    end
+
     def colorize_links(line, base_color, link_color)
       url_re = %r{https?://[^\s<>\[\]()]+}
       parts = line.split(url_re, -1)
