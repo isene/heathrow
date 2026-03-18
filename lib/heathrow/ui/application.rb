@@ -1911,7 +1911,11 @@ module Heathrow
         clear_inline_image
       end
 
-      return unless current_msg
+      unless current_msg
+        @panes[:right].text = ""
+        @panes[:right].refresh
+        return
+      end
 
       msg = current_msg
 
