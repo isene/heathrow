@@ -170,9 +170,17 @@ module Heathrow
           changed_base_ids.each do |base_id|
             flags = self.class.parse_maildir_flags(disk_files[base_id])
             db_row = db_index[base_id]
-            if flags[:seen] != (db_row[:read] == 1) || flags[:flagged] != (db_row[:starred] == 1) || flags[:replied] != (db_row[:replied] == 1)
+            # For replied: DB is authoritative. If DB says replied but disk
+            # doesn't have R flag, add it to disk rather than clearing DB.
+            disk_replied = flags[:replied]
+            db_replied = db_row[:replied] == 1
+            if db_replied && !disk_replied
+              rename_with_flag(disk_files[base_id], 'R', add: true)
+              disk_replied = true
+            end
+            if flags[:seen] != (db_row[:read] == 1) || flags[:flagged] != (db_row[:starred] == 1) || disk_replied != db_replied
               db.execute("UPDATE messages SET read = ?, starred = ?, replied = ? WHERE id = ?",
-                         flags[:seen] ? 1 : 0, flags[:flagged] ? 1 : 0, flags[:replied] ? 1 : 0, db_row[:id])
+                         flags[:seen] ? 1 : 0, flags[:flagged] ? 1 : 0, disk_replied ? 1 : 0, db_row[:id])
             end
             # Update external_id and metadata if filename changed
             current_filename = File.basename(disk_files[base_id])

@@ -5688,14 +5688,14 @@ module Heathrow
               msg += " (#{composed[:attachments].size} attachment(s))"
             end
             set_feedback(msg, 156, 3)
+            render_left_pane if orig_id
           else
             set_feedback(result[:message], 196, 4)
           end
         rescue => e
           set_feedback("Send error: #{e.message}", 196, 4)
-          if ENV['DEBUG']
-            File.open('/tmp/heathrow_debug.log', 'a') { |f| f.puts "send_composed_message error: #{e.message}\n#{e.backtrace.first(5).join("\n")}" }
-          end
+          File.open('/tmp/heathrow_debug.log', 'a') { |f| f.puts "#{Time.now} send_composed_message error: #{e.message}\n#{e.backtrace.first(5).join("\n")}" }
+
         end
       end
     end
