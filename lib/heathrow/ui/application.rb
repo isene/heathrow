@@ -7674,7 +7674,9 @@ Required: URL, optional CSS selector
       Config.identity_for_folder(folder)
     end
 
-    # Colorize email content with mutt-style quote levels and signature dimming
+    # Colorize email content with mutt-style quote levels and signature dimming.
+    # Detects both ">" prefix quoting and indentation-based quoting (from HTML
+    # emails rendered via w3m, where blockquotes become indented text).
     def colorize_email_content(content)
       quote_colors = [theme[:quote1] || 114, theme[:quote2] || 180,
                       theme[:quote3] || 139, theme[:quote4] || 109]
@@ -7682,23 +7684,41 @@ Required: URL, optional CSS selector
       link_color = theme[:link] || 4     # blue (vim String)
       email_color = theme[:email] || 5   # magenta (vim Special)
       in_signature = false
+      indent_quote_level = 0  # tracks nesting from "wrote:" attribution lines
 
-      content.lines.map do |line|
+      lines = content.lines
+      result = []
+      lines.each_with_index do |line, i|
         stripped = line.rstrip
         # Detect signature delimiter (RFC 3676: "-- " on its own line)
         if stripped == '-- ' || stripped == '--'
           in_signature = true
-          colorize_links(stripped, sig_color, link_color)
+          indent_quote_level = 0
+          result << colorize_links(stripped, sig_color, link_color)
         elsif in_signature
-          colorize_links(stripped, sig_color, link_color)
+          result << colorize_links(stripped, sig_color, link_color)
         elsif stripped =~ /^(>{1,})\s?/
           level = $1.length
           color = quote_colors[[level - 1, quote_colors.length - 1].min]
-          colorize_links(stripped, color, link_color)
+          result << colorize_links(stripped, color, link_color)
         else
-          colorize_links(stripped, nil, link_color)
+          # Detect "wrote:" attribution lines (start of indented quote block)
+          if stripped =~ /\bwrote:\s*$/
+            indent_quote_level += 1
+            color = quote_colors[[indent_quote_level - 1, quote_colors.length - 1].min]
+            result << colorize_links(stripped, color, link_color)
+          elsif indent_quote_level > 0 && stripped =~ /^\s{2,}/
+            # Indented line inside a quote block
+            color = quote_colors[[indent_quote_level - 1, quote_colors.length - 1].min]
+            result << colorize_links(stripped, color, link_color)
+          else
+            # Non-indented line resets indent quoting
+            indent_quote_level = 0 if indent_quote_level > 0 && !stripped.empty?
+            result << colorize_links(stripped, nil, link_color)
+          end
         end
-      end.join("\n")
+      end
+      result.join("\n")
     end
 
     # Convert HTML to readable text via w3m
@@ -7913,7 +7933,6 @@ Required: URL, optional CSS selector
     def format_attachments(attachments)
       return nil unless attachments.is_a?(Array) && !attachments.empty?
       lines = []
-      lines << ("─" * 60).fg(238)
       lines << "Attachments:".b.fg(208)
       attachments.each_with_index do |att, i|
         name = att['name'] || att['filename'] || 'unnamed'
