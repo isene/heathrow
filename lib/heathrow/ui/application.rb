@@ -2154,6 +2154,11 @@ module Heathrow
       # Colorize email content (quote levels + signature)
       content = colorize_email_content(content)
 
+      # Store maildir file path for calendar parser
+      meta = msg['metadata']
+      meta = JSON.parse(meta) if meta.is_a?(String) rescue nil
+      @_current_render_msg_file = meta['maildir_file'] if meta.is_a?(Hash)
+
       # Attachment list under header, before body
       att_text = format_attachments(msg['attachments'])
 
@@ -2175,10 +2180,14 @@ module Heathrow
       end
       html_hint = message_has_html?(msg) ? "HTML mail, press x to open in browser".fg(39) : nil
 
+      # Parse calendar invites (ICS attachments)
+      cal_text = format_calendar_event(msg['attachments'])
+
       full_text = header.join("\n")
       full_text += "\n" + att_text if att_text
       full_text += "\n" + image_hint if image_hint
       full_text += "\n" + html_hint if html_hint
+      full_text += "\n\n" + cal_text if cal_text
       full_text += "\n\n" + content
       
       @panes[:right].text = full_text
@@ -2462,6 +2471,7 @@ module Heathrow
             when 'subject' then db_filters[:subject_pattern] = value
             when 'folder'  then db_filters[:maildir_folder] = value
             when 'label'   then db_filters[:label] = value
+            when 'source'  then db_filters[:source_name] = value
             end
           end
         end
@@ -2665,6 +2675,7 @@ module Heathrow
               when 'subject' then db_filters[:subject_pattern] = value
               when 'folder'  then db_filters[:maildir_folder] = value
               when 'label'   then db_filters[:label] = value
+              when 'source'  then db_filters[:source_name] = value
               end
             end
           end
@@ -4864,47 +4875,83 @@ module Heathrow
     # Notmuch full-text search
     def notmuch_search
       require_relative '../notmuch'
-      unless Heathrow::Notmuch.available?
-        set_feedback("notmuch not found", 196, 3)
-        return
+      has_notmuch = Heathrow::Notmuch.available?
+
+      # Source picker: let user scope the search
+      sources = @db.get_sources(true)  # enabled only
+      scope_hint = sources.each_with_index.map { |s, i| "#{i + 1}:#{s['name']}" }.join(' ')
+      scope = bottom_ask("Search in (Enter=all, #{scope_hint}): ", "")
+      return if scope == 'ESC'
+
+      selected_source_ids = nil
+      scope_label = "all"
+      if scope && !scope.strip.empty?
+        # Parse source selection (comma-separated numbers or name fragment)
+        selected = []
+        scope.split(',').each do |part|
+          part = part.strip
+          if part =~ /^\d+$/
+            idx = part.to_i - 1
+            selected << sources[idx] if idx >= 0 && idx < sources.size
+          else
+            # Name fragment match
+            sources.each { |s| selected << s if s['name'].downcase.include?(part.downcase) }
+          end
+        end
+        if selected.any?
+          selected_source_ids = selected.map { |s| s['id'] }
+          scope_label = selected.map { |s| s['name'] }.join(', ')
+        end
       end
 
-      query = bottom_ask("Search (notmuch): ", "")
+      query = bottom_ask("Search#{scope_label != 'all' ? " [#{scope_label}]" : ''}: ", "")
       return if query.nil? || query.strip.empty?
 
       @panes[:bottom].text = " Searching...".fg(226)
       @panes[:bottom].refresh
 
-      files = Heathrow::Notmuch.search_files(query)
-      if files.empty?
-        set_feedback("No results for: #{query}", 226, 3)
-        return
+      results = []
+
+      # Use notmuch for Maildir sources (fast indexed search)
+      if has_notmuch && (selected_source_ids.nil? || sources.any? { |s| selected_source_ids&.include?(s['id']) && s['plugin_type'] == 'maildir' })
+        files = Heathrow::Notmuch.search_files(query)
+        unless files.empty?
+          basenames = files.map { |f| File.basename(f) }
+          basenames.each_slice(100) do |batch|
+            ph = batch.map { '?' }.join(',')
+            sql = "SELECT * FROM messages WHERE external_id IN (#{ph})"
+            params = batch.dup
+            if selected_source_ids
+              sid_ph = selected_source_ids.map { '?' }.join(',')
+              sql += " AND source_id IN (#{sid_ph})"
+              params += selected_source_ids
+            end
+            rows = @db.execute(sql, *params)
+            rows.each do |row|
+              row['recipients'] = JSON.parse(row['recipients']) if row['recipients'].is_a?(String)
+              row['metadata'] = JSON.parse(row['metadata']) if row['metadata'].is_a?(String)
+              row['labels'] = JSON.parse(row['labels']) if row['labels'].is_a?(String)
+              row['attachments'] = JSON.parse(row['attachments']) if row['attachments'].is_a?(String)
+            end
+            results.concat(rows)
+          end
+        end
       end
 
-      # Map file paths back to Heathrow messages via metadata.maildir_file
-      # Use basename matching since paths may differ slightly
-      basenames = files.map { |f| File.basename(f) }
-      placeholders = basenames.map { '?' }.join(',')
-
-      # Search by external_id (which is the filename basename)
-      results = []
-      basenames.each_slice(100) do |batch|
-        ph = batch.map { '?' }.join(',')
-        rows = @db.execute(
-          "SELECT * FROM messages WHERE external_id IN (#{ph})",
-          *batch
-        )
-        rows.each do |row|
-          row['recipients'] = JSON.parse(row['recipients']) if row['recipients']
-          row['metadata'] = JSON.parse(row['metadata']) if row['metadata']
-          row['labels'] = JSON.parse(row['labels']) if row['labels']
-          row['attachments'] = JSON.parse(row['attachments']) if row['attachments']
-        end
-        results.concat(rows)
+      # DB search for non-Maildir sources (or if notmuch unavailable)
+      non_maildir_ids = if selected_source_ids
+        selected_source_ids.select { |sid| sources.find { |s| s['id'] == sid && s['plugin_type'] != 'maildir' } }
+      else
+        sources.select { |s| s['plugin_type'] != 'maildir' }.map { |s| s['id'] }
+      end
+      if non_maildir_ids.any?
+        db_filters = { search: query, source_ids: non_maildir_ids }
+        db_results = @db.get_messages(db_filters, 500, 0, light: false)
+        results.concat(db_results)
       end
 
       if results.empty?
-        set_feedback("#{files.size} files found but none in DB", 226, 3)
+        set_feedback("No results for: #{query}", 226, 3)
         return
       end
 
@@ -4912,11 +4959,12 @@ module Heathrow
       @current_view = 'A'
       @in_source_view = false
       @panes[:right].content_update = true
-      @current_source_filter = "Search: #{query}"
+      @current_source_filter = "Search: #{query}#{scope_label != 'all' ? " [#{scope_label}]" : ''}"
       @filtered_messages = results
       sort_messages
       @index = 0
-      set_feedback("#{results.size} results for: #{query}", 156, 3)
+      reset_threading if respond_to?(:reset_threading)
+      set_feedback("#{results.size} results for: #{query}", 156, 0)
       render_all
     end
 
@@ -7383,7 +7431,16 @@ Required: URL, optional CSS selector
         new_rules << { 'field' => 'subject', 'op' => 'like', 'value' => subject_input }
       end
 
-      # 6. Read status
+      # 6. Source filter
+      current_source = current_vals['source_like'] || ''
+      source_names = @db.get_sources(true).map { |s| s['name'] }.join(', ')
+      source_input = bottom_ask("Source (#{source_names} - ESC cancel): ", current_source)
+      return render_all if source_input.nil?
+      unless source_input.empty?
+        new_rules << { 'field' => 'source', 'op' => 'like', 'value' => source_input }
+      end
+
+      # 7. Read status
       current_read = current_vals['read_=']
       default_read = current_read == false ? 'y' : (current_read == true ? 'n' : '')
       read_input = bottom_ask("Unread only? (y/n/Enter for all, ESC cancel): ", default_read)
@@ -8008,6 +8065,171 @@ Required: URL, optional CSS selector
     end
 
     # Format attachment list for display
+    # Parse and format calendar events from ICS attachments
+    def format_calendar_event(attachments)
+      attachments = [] unless attachments.is_a?(Array)
+      # Find ICS data from attachments or inline MIME parts
+      ics_data = nil
+      begin
+        require 'mail'
+
+        # First check attachments array
+        ics_att = attachments.is_a?(Array) && attachments.find do |att|
+          ct = (att['content_type'] || '').downcase
+          name = (att['name'] || att['filename'] || '').downcase
+          ct.include?('calendar') || ct.include?('ics') || name.end_with?('.ics')
+        end
+
+        # Get the maildir file path (from attachment or message metadata)
+        file = ics_att['source_file'] if ics_att
+        file ||= @_current_render_msg_file  # Set by render_message_content
+        return nil unless file && File.exist?(file)
+
+        # Parse MIME parts for calendar data
+        mail = Mail.read(file)
+        if mail.multipart?
+          mail.parts.each do |part|
+            ct = (part.content_type || '').downcase
+            if ct.include?('calendar') || ct.include?('ics')
+              ics_data = part.decoded
+              break
+            end
+            if part.multipart?
+              part.parts.each do |sub|
+                sct = (sub.content_type || '').downcase
+                if sct.include?('calendar') || sct.include?('ics')
+                  ics_data = sub.decoded
+                  break
+                end
+              end
+              break if ics_data
+            end
+          end
+        end
+        ics_data ||= File.read(file) if file.end_with?('.ics')
+        return nil unless ics_data && ics_data.include?('BEGIN:')
+
+        # Use VcalView parser
+        # Try calview gem for full ICS parsing (with timezone support)
+        unless defined?(VcalParser)
+          begin
+            require 'calview'
+          rescue LoadError
+            # calview gem not available, use basic parser
+          end
+        end
+        if defined?(VcalParser)
+          parser = VcalParser.new(ics_data)
+          event = parser.parse
+          return nil unless event
+        else
+          # Fallback: basic inline parsing
+          event = parse_ics_basic(ics_data)
+          return nil unless event
+        end
+
+        # Format the event for display
+        lines = []
+        lines << ("─" * 50).fg(238)
+        lines << "Calendar Event".b.fg(226)
+        lines << ""
+        lines << "WHAT:  #{event[:summary]}".fg(156) if event[:summary]
+        if event[:dates]
+          when_str = event[:dates]
+          when_str += " (#{event[:weekday]})" if event[:weekday]
+          when_str += ", #{event[:times]}" if event[:times]
+          lines << "WHEN:  #{when_str}".fg(39)
+        end
+        lines << "WHERE: #{event[:location]}".fg(45) if event[:location] && !event[:location].to_s.empty?
+        lines << "RECUR: #{event[:recurrence]}".fg(180) if event[:recurrence]
+        lines << "STATUS: #{event[:status]}".fg(245) if event[:status]
+        lines << ""
+        lines << "ORGANIZER: #{event[:organizer]}".fg(2) if event[:organizer]
+        if event[:participants] && !event[:participants].to_s.strip.empty?
+          lines << "PARTICIPANTS:".fg(2)
+          lines << event[:participants].fg(245)
+        end
+        if event[:description] && !event[:description].to_s.strip.empty?
+          lines << ""
+          lines << "DESCRIPTION:".fg(245)
+          lines << event[:description].fg(245)
+        end
+        lines << ("─" * 50).fg(238)
+        lines.join("\n")
+      rescue => e
+        nil  # Don't crash on calendar parse errors
+      end
+    end
+
+    # Basic ICS parsing fallback (when VcalView is not available)
+    def parse_ics_basic(ics)
+      # Extract only the VEVENT section (ignore VTIMEZONE which has dummy dates)
+      vevent = ics[/BEGIN:VEVENT(.*?)END:VEVENT/m, 1]
+      return nil unless vevent
+
+      # Unfold continuation lines (RFC 5545: lines starting with space are continuations)
+      vevent = vevent.gsub(/\r?\n[ \t]/, '')
+
+      event = {}
+
+      # SUMMARY (strip LANGUAGE= and other params before the colon-value)
+      if vevent =~ /^SUMMARY[^:]*:(.*)$/i
+        event[:summary] = $1.strip
+      end
+
+      # DTSTART with TZID
+      if vevent =~ /^DTSTART;TZID=[^:]*:(\d{8})T?(\d{4,6})?/i
+        d = $1; t = $2
+        event[:dates] = "#{d[0,4]}-#{d[4,2]}-#{d[6,2]}"
+        event[:times] = t ? "#{t[0,2]}:#{t[2,2]}" : "All day"
+        begin
+          dobj = Time.parse(event[:dates])
+          event[:weekday] = dobj.strftime('%A')
+        rescue; end
+      elsif vevent =~ /^DTSTART;VALUE=DATE:(\d{8})/i
+        d = $1
+        event[:dates] = "#{d[0,4]}-#{d[4,2]}-#{d[6,2]}"
+        event[:times] = "All day"
+      elsif vevent =~ /^DTSTART:(\d{8})T?(\d{4,6})?/i
+        d = $1; t = $2
+        event[:dates] = "#{d[0,4]}-#{d[4,2]}-#{d[6,2]}"
+        event[:times] = t ? "#{t[0,2]}:#{t[2,2]}" : "All day"
+      end
+
+      # DTEND
+      if vevent =~ /^DTEND;TZID=[^:]*:(\d{8})T?(\d{4,6})?/i ||
+         vevent =~ /^DTEND:(\d{8})T?(\d{4,6})?/i
+        d = $1; t = $2
+        end_date = "#{d[0,4]}-#{d[4,2]}-#{d[6,2]}"
+        end_time = t ? "#{t[0,2]}:#{t[2,2]}" : nil
+        event[:dates] += " - #{end_date}" if end_date && end_date != event[:dates]
+        event[:times] += " - #{end_time}" if end_time && end_time != event[:times]
+      end
+
+      # LOCATION (strip params)
+      if vevent =~ /^LOCATION[^:]*:(.*)$/i
+        event[:location] = $1.strip
+      end
+
+      # ORGANIZER
+      if vevent =~ /^ORGANIZER.*CN=([^;:]+)/i
+        event[:organizer] = $1.strip
+      elsif vevent =~ /^ORGANIZER.*MAILTO:(.+)$/i
+        event[:organizer] = $1.strip
+      end
+
+      # ATTENDEES
+      attendees = vevent.scan(/^ATTENDEE.*CN=([^;:]+)/i).flatten
+      if attendees.any?
+        event[:participants] = attendees.map { |a| "   #{a.strip}" }.join("\n")
+      end
+
+      # STATUS
+      event[:status] = $1.strip.capitalize if vevent =~ /^STATUS:(.*)$/i
+
+      event.empty? ? nil : event
+    end
+
     def format_attachments(attachments)
       return nil unless attachments.is_a?(Array) && !attachments.empty?
       lines = []

@@ -358,6 +358,19 @@ module Heathrow
         query += " AND source_id = ?"
         params << filters[:source_id]
       end
+
+      if filters[:source_ids].is_a?(Array) && !filters[:source_ids].empty?
+        ph = filters[:source_ids].map { '?' }.join(',')
+        query += " AND source_id IN (#{ph})"
+        params += filters[:source_ids]
+      end
+
+      if filters[:source_name]
+        patterns = filters[:source_name].split('|').map(&:strip)
+        conditions = patterns.map { "name LIKE ?" }.join(' OR ')
+        query += " AND source_id IN (SELECT id FROM sources WHERE #{conditions})"
+        params += patterns.map { |p| "%#{p}%" }
+      end
       
       # Handle sender pattern (supports regex via pipe separation)
       if filters[:sender_pattern]
