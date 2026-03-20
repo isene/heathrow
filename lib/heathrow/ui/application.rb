@@ -419,9 +419,10 @@ module Heathrow
       @initial_load_done = false
       Thread.new do
         begin
+          @load_limit = 200
           case @default_view
           when 'N'
-            @filtered_messages = @db.get_messages({is_read: false}, 1000, 0, light: true)
+            @filtered_messages = @db.get_messages({is_read: false}, @load_limit, 0, light: true)
           when /^[0-9]$/, /^F\d+$/
             view = @views[@default_view]
             if view && view[:filters] && !view[:filters].empty?
@@ -430,16 +431,17 @@ module Heathrow
               end
               apply_view_filters(view)
             else
-              @filtered_messages = @db.get_messages({}, 1000, 0, light: true)
+              @filtered_messages = @db.get_messages({}, @load_limit, 0, light: true)
               @current_view = 'A'
             end
           else
-            @filtered_messages = @db.get_messages({}, 1000, 0, light: true)
+            @filtered_messages = @db.get_messages({}, @load_limit, 0, light: true)
             @current_view = 'A'
           end
           sort_messages
           @index = 0
           reset_threading if respond_to?(:reset_threading)
+          restore_view_thread_mode if respond_to?(:restore_view_thread_mode)
           @initial_load_done = true
           @needs_redraw = true
           # Preload the heavy mail gem so 'v' (attachments) doesn't lag
@@ -508,9 +510,17 @@ module Heathrow
           render_all
           @needs_redraw = false
         end
+        # Check for mailto trigger (from wezterm or external script)
+        check_mailto_trigger
+
         chr = getchr(2, flush: false)  # 2s timeout to check for new mail
         begin
           if chr
+            # Clear sticky feedback (errors, "message sent") on any keypress
+            if @feedback_sticky
+              @feedback_sticky = false
+              @feedback_expires_at = Time.now  # Expire now so render_bottom_bar clears it
+            end
             @needs_redraw = false  # Handlers that need redraw call render_all directly
             handle_input_key(chr)
           else
@@ -2254,7 +2264,13 @@ module Heathrow
     def set_feedback(message, color = 156, duration = 3)
       @feedback_message = message
       @feedback_color = color
-      @feedback_expires_at = duration > 0 ? Time.now + duration : Time.now + 86400
+      # duration 0 or errors: persist until next user action (cleared by clear_sticky_feedback)
+      @feedback_sticky = (duration == 0 || color == 196)
+      @feedback_expires_at = if @feedback_sticky
+        nil  # Never auto-expire; cleared on keypress
+      else
+        Time.now + duration
+      end
       if @panes[:bottom]
         @panes[:bottom].text = " #{message}".fg(color)
         @panes[:bottom].refresh
@@ -3027,6 +3043,7 @@ module Heathrow
       msg = current_message
       return unless msg
       return if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header']
+      msg = ensure_full_message(msg)
 
       # Mark as read
       if msg['is_read'].to_i == 0
@@ -5324,7 +5341,24 @@ module Heathrow
       render_bottom_bar
     end
 
-    def compose_new_mail(source)
+    # Check for mailto trigger file (written by wezterm or external scripts)
+    def check_mailto_trigger
+      mailto_file = File.join(HEATHROW_HOME, 'mailto')
+      return unless File.exist?(mailto_file)
+      addr = File.read(mailto_file).strip
+      File.delete(mailto_file)
+      return if addr.empty?
+
+      # Find the first mail source
+      mail_source = @source_manager.sources.values.find do |s|
+        s['enabled'] && %w[maildir gmail imap].include?(s['plugin_type'] || s['type'])
+      end
+      return unless mail_source
+
+      compose_new_mail(mail_source, mailto: addr)
+    end
+
+    def compose_new_mail(source, mailto: nil)
       require_relative '../message_composer'
       identity = current_identity
 
@@ -5347,7 +5381,7 @@ module Heathrow
         @panes[:bottom].text = " Opening editor for new message...".fg(226)
         @panes[:bottom].refresh
 
-        composed = composer.compose_new
+        composed = composer.compose_new(mailto)
       end
       setup_display
       create_panes
@@ -5732,8 +5766,8 @@ module Heathrow
             if composed[:attachments] && !composed[:attachments].empty?
               msg += " (#{composed[:attachments].size} attachment(s))"
             end
-            set_feedback(msg, 156, 3)
-            render_left_pane if orig_id
+            set_feedback(msg, 156, 0)
+            render_message_list if orig_id
           else
             set_feedback(result[:message], 196, 4)
           end
@@ -7743,8 +7777,10 @@ Required: URL, optional CSS selector
           color = quote_colors[[level - 1, quote_colors.length - 1].min]
           result << colorize_links(stripped, color, link_color)
         else
-          # Detect "wrote:" attribution lines (start of indented quote block)
-          if stripped =~ /\bwrote:\s*$/
+          # Detect attribution lines (start of indented quote block)
+          # Matches: "wrote:", "skrev ...:", "schrieb ...:", "a écrit :", or "date ... <email>:"
+          if stripped =~ /\b(wrote|skrev|schrieb|geschreven|scrisse|escribi[oó]|a\s+[eé]crit)\b.*:\s*$/ ||
+             stripped =~ /\d\d[:\.]\d\d\s.*<[^>]+>:\s*$/
             indent_quote_level += 1
             color = quote_colors[[indent_quote_level - 1, quote_colors.length - 1].min]
             result << colorize_links(stripped, color, link_color)
