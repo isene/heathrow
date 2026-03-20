@@ -2369,8 +2369,8 @@ module Heathrow
       if @current_folder
         light_cols = "id, source_id, external_id, thread_id, parent_id, sender, sender_name, recipients, subject, substr(content, 1, 200) as content, timestamp, received_at, read AS is_read, starred AS is_starred, archived, labels, metadata, attachments, folder, replied"
         results = @db.execute(
-          "SELECT #{light_cols} FROM messages WHERE folder >= ? AND folder < ? ORDER BY timestamp DESC LIMIT ?",
-          @current_folder, @current_folder.chomp('.') + '/', @load_limit
+          "SELECT #{light_cols} FROM messages WHERE folder = ? ORDER BY timestamp DESC LIMIT ?",
+          @current_folder, @load_limit
         )
         @filtered_messages = results
       elsif @current_view == 'A'
@@ -2524,8 +2524,8 @@ module Heathrow
         if @current_folder
           light_cols = "id, source_id, external_id, thread_id, parent_id, sender, sender_name, recipients, subject, substr(content, 1, 200) as content, timestamp, received_at, read AS is_read, starred AS is_starred, archived, labels, metadata, attachments, folder, replied"
           @filtered_messages = @db.execute(
-            "SELECT #{light_cols} FROM messages WHERE folder >= ? AND folder < ? ORDER BY timestamp DESC LIMIT ?",
-            @current_folder, @current_folder.chomp('.') + '/', @load_limit
+            "SELECT #{light_cols} FROM messages WHERE folder = ? ORDER BY timestamp DESC LIMIT ?",
+            @current_folder, @load_limit
           )
         elsif @current_view == 'A'
           @filtered_messages = @db.get_messages({}, @load_limit, 0, light: true)
@@ -3747,8 +3747,8 @@ module Heathrow
     def folder_message_count(folder_name)
       # Use range query to leverage folder index (5x faster than OR + LIKE)
       row = @db.db.get_first_row(
-        "SELECT COUNT(*) as total, SUM(CASE WHEN read = 0 THEN 1 ELSE 0 END) as unread FROM messages WHERE folder >= ? AND folder < ?",
-        [folder_name, folder_name.chomp('.') + '/']
+        "SELECT COUNT(*) as total, SUM(CASE WHEN read = 0 THEN 1 ELSE 0 END) as unread FROM messages WHERE folder = ?",
+        [folder_name]
       )
       { total: (row && row['total']) || 0, unread: (row && row['unread']) || 0 }
     rescue
@@ -3996,8 +3996,8 @@ module Heathrow
       @load_limit = 200
       light_cols = "id, source_id, external_id, thread_id, parent_id, sender, sender_name, recipients, subject, substr(content, 1, 200) as content, timestamp, received_at, read AS is_read, starred AS is_starred, archived, labels, metadata, attachments, folder, replied"
       results = @db.execute(
-        "SELECT #{light_cols} FROM messages WHERE folder >= ? AND folder < ? ORDER BY timestamp DESC LIMIT ?",
-        folder_name, folder_name.chomp('.') + '/', @load_limit
+        "SELECT #{light_cols} FROM messages WHERE folder = ? ORDER BY timestamp DESC LIMIT ?",
+        folder_name, @load_limit
       )
 
       @filtered_messages = results
@@ -8110,23 +8110,9 @@ Required: URL, optional CSS selector
         return nil unless ics_data && ics_data.include?('BEGIN:')
 
         # Use VcalView parser
-        # Try calview gem for full ICS parsing (with timezone support)
-        unless defined?(VcalParser)
-          begin
-            require 'calview'
-          rescue LoadError
-            # calview gem not available, use basic parser
-          end
-        end
-        if defined?(VcalParser)
-          parser = VcalParser.new(ics_data)
-          event = parser.parse
-          return nil unless event
-        else
-          # Fallback: basic inline parsing
-          event = parse_ics_basic(ics_data)
-          return nil unless event
-        end
+        # Use basic inline ICS parser
+        event = parse_ics_basic(ics_data)
+        return nil unless event
 
         # Format the event for display
         lines = []
@@ -8149,11 +8135,8 @@ Required: URL, optional CSS selector
           lines << "PARTICIPANTS:".fg(2)
           lines << event[:participants].fg(245)
         end
-        if event[:description] && !event[:description].to_s.strip.empty?
-          lines << ""
-          lines << "DESCRIPTION:".fg(245)
-          lines << event[:description].fg(245)
-        end
+        # Skip description (email body already shows it, and ICS descriptions
+        # often contain raw URLs that can overflow the pane)
         lines << ("─" * 50).fg(238)
         lines.join("\n")
       rescue => e
@@ -8190,18 +8173,44 @@ Required: URL, optional CSS selector
         d = $1
         event[:dates] = "#{d[0,4]}-#{d[4,2]}-#{d[6,2]}"
         event[:times] = "All day"
-      elsif vevent =~ /^DTSTART:(\d{8})T?(\d{4,6})?/i
-        d = $1; t = $2
+      elsif vevent =~ /^DTSTART:(\d{8})T?(\d{4,6})?(Z)?/i
+        d = $1; t = $2; utc = $3
         event[:dates] = "#{d[0,4]}-#{d[4,2]}-#{d[6,2]}"
-        event[:times] = t ? "#{t[0,2]}:#{t[2,2]}" : "All day"
+        if t
+          # Convert UTC times to local
+          if utc
+            utc_time = Time.utc(d[0,4].to_i, d[4,2].to_i, d[6,2].to_i, t[0,2].to_i, t[2,2].to_i)
+            local = utc_time.localtime
+            event[:dates] = local.strftime('%Y-%m-%d')
+            event[:times] = local.strftime('%H:%M')
+            event[:weekday] = local.strftime('%A')
+          else
+            event[:times] = "#{t[0,2]}:#{t[2,2]}"
+            begin
+              event[:weekday] = Time.parse(event[:dates]).strftime('%A')
+            rescue; end
+          end
+        else
+          event[:times] = "All day"
+        end
       end
 
       # DTEND
-      if vevent =~ /^DTEND;TZID=[^:]*:(\d{8})T?(\d{4,6})?/i ||
-         vevent =~ /^DTEND:(\d{8})T?(\d{4,6})?/i
+      if vevent =~ /^DTEND;TZID=[^:]*:(\d{8})T?(\d{4,6})?/i
         d = $1; t = $2
         end_date = "#{d[0,4]}-#{d[4,2]}-#{d[6,2]}"
         end_time = t ? "#{t[0,2]}:#{t[2,2]}" : nil
+      elsif vevent =~ /^DTEND:(\d{8})T?(\d{4,6})?(Z)?/i
+        d = $1; t = $2; utc = $3
+        if t && utc
+          utc_time = Time.utc(d[0,4].to_i, d[4,2].to_i, d[6,2].to_i, t[0,2].to_i, t[2,2].to_i)
+          local = utc_time.localtime
+          end_date = local.strftime('%Y-%m-%d')
+          end_time = local.strftime('%H:%M')
+        else
+          end_date = "#{d[0,4]}-#{d[4,2]}-#{d[6,2]}"
+          end_time = t ? "#{t[0,2]}:#{t[2,2]}" : nil
+        end
         event[:dates] += " - #{end_date}" if end_date && end_date != event[:dates]
         event[:times] += " - #{end_time}" if end_time && end_time != event[:times]
       end
