@@ -21,6 +21,8 @@ module Heathrow
         @all_start_collapsed = true  # Start with everything collapsed
         @section_order = nil  # Custom section order (array of names)
         @view_thread_modes = {}  # Per-view threading mode: key => {threaded:, folder:}
+        @organized_cache = nil
+        @organized_cache_key = nil
       end
       
       # Toggle between flat and threaded view
@@ -69,20 +71,10 @@ module Heathrow
       def save_view_thread_mode
         return unless @current_view
         @view_thread_modes[@current_view] = { threaded: @show_threaded, folder: @group_by_folder }
-
-        # Persist to DB
-        view = @views[@current_view]
-        if view && view[:filters].is_a?(Hash)
-          view[:filters]['view_thread_mode'] = thread_mode_key
-          @db.execute("UPDATE views SET filters = ?, updated_at = ? WHERE id = ?",
-                      [JSON.generate(view[:filters]), Time.now.to_i, view[:id]])
-        else
-          # Built-in views (A, N): store in settings table
-          @db.execute(
-            "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
-            ["thread_mode_#{@current_view}", thread_mode_key, Time.now.to_i]
-          )
-        end
+        @db.execute(
+          "INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+          ["thread_mode_#{@current_view}", thread_mode_key, Time.now.to_i]
+        )
       end
 
       # Restore threading mode for the active view
@@ -97,19 +89,12 @@ module Heathrow
           return true
         end
 
-        # Load from DB
-        mode_key = nil
-        view = @views[@current_view]
-        if view && view[:filters].is_a?(Hash)
-          mode_key = view[:filters]['view_thread_mode']
-        end
-        unless mode_key
-          row = @db.db.get_first_row(
-            "SELECT value FROM settings WHERE key = ?",
-            ["thread_mode_#{@current_view}"]
-          )
-          mode_key = row && row['value']
-        end
+        # Load from settings table
+        row = @db.db.get_first_row(
+          "SELECT value FROM settings WHERE key = ?",
+          ["thread_mode_#{@current_view}"]
+        )
+        mode_key = row && row['value']
         return false unless mode_key
 
         apply_thread_mode_key(mode_key)
@@ -161,6 +146,8 @@ module Heathrow
         @threading_initialized = false
         @display_messages = []
         @scroll_offset = 0  # Reset scroll position
+        @organized_cache = nil
+        @organized_cache_key = nil
 
         # Preserve or reset collapsed states
         if !preserve_collapsed_state
@@ -195,17 +182,15 @@ module Heathrow
       # Organize messages for current view
       def organize_current_messages(force_reinit = false)
         return unless @show_threaded
-        
+
         # Only organize once per message set - capture the base messages on first run
         # OR if we're forcing reinitialization after a sort change
         if !@threading_initialized || force_reinit
           @base_messages = @filtered_messages.dup
           @threading_initialized = true
-          
-          File.open('/tmp/heathrow_debug.log', 'a') do |f|
-            f.puts "THREADING: Creating organizer with #{@base_messages.size} base messages (#{force_reinit ? 'forced reinit' : 'first time'})"
-          end if ENV['DEBUG']
-          
+          @organized_cache = nil
+          @organized_cache_key = nil
+
           require_relative '../message_organizer'
           @organizer = MessageOrganizer.new(@base_messages, @db, group_by_folder: @group_by_folder)
         end
@@ -305,8 +290,15 @@ module Heathrow
         visible_messages = []
         current_index = 0
         @scroll_offset ||= 0  # Track scroll position
-        
-        organized = @organizer.get_organized_view(@sort_order, @sort_inverted)
+
+        cache_key = "#{@sort_order}|#{@sort_inverted}|#{@filtered_messages.size}"
+        if @organized_cache && @organized_cache_key == cache_key
+          organized = @organized_cache
+        else
+          organized = @organizer.get_organized_view(@sort_order, @sort_inverted)
+          @organized_cache = organized
+          @organized_cache_key = cache_key
+        end
 
         # Apply custom section order if set
         if @section_order && !@section_order.empty?
@@ -403,10 +395,6 @@ module Heathrow
             return render_message_list_threaded  # Re-render with correct highlight
           end
         end
-
-        File.open('/tmp/heathrow_debug.log', 'a') do |f|
-          f.puts "THREADING: Created #{@display_messages.size} display messages for navigation"
-        end if ENV['DEBUG']
 
         # Give full text to rcurses and use its scrolling with markers
         @panes[:left].scroll = true

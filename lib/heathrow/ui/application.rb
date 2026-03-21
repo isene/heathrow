@@ -206,14 +206,24 @@ module Heathrow
       selected ? base.merge(selected) : base
     end
 
+    def header_message?(msg)
+      msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header'] || msg['is_dm_header']
+    end
+
+    def invalidate_counts
+      @cached_unread = nil
+      @cached_starred = nil
+      @cached_total = nil
+    end
+
     # Get the current message at @index (threaded or flat view)
     def current_message
-      respond_to?(:current_message_for_navigation) ? current_message_for_navigation : @filtered_messages[@index]
+      current_message_for_navigation
     end
 
     # Get the current message count (threaded or flat view)
     def message_count
-      respond_to?(:filtered_messages_size) ? filtered_messages_size : @filtered_messages.size
+      filtered_messages_size
     end
 
     # Mark the previous message as read when moving away from it
@@ -223,7 +233,7 @@ module Heathrow
       # Remember current message so it gets marked read when we leave it
       msg = current_message
       return unless msg
-      return if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header'] || msg['is_dm_header']
+      return if header_message?(msg)
       return unless msg['id'] && !msg['id'].to_s.start_with?('header_')
 
       if msg['is_read'].to_i == 0
@@ -246,6 +256,7 @@ module Heathrow
 
       @db.mark_as_read(msg['id'])
       msg['is_read'] = 1
+      invalidate_counts
       sync_maildir_flag(msg, 'S', true)
 
       # Also update any other references to this message in filtered/display lists
@@ -281,21 +292,22 @@ module Heathrow
       count = @browsed_message_ids.size
       return if count == 0
 
+      msg_by_id = @filtered_messages.each_with_object({}) { |m, h| h[m['id']] = m }
       @browsed_message_ids.each do |msg_id|
         @db.mark_as_read(msg_id)
-        # Update in current message list
-        msg = @filtered_messages.find { |m| m['id'] == msg_id }
+        msg = msg_by_id[msg_id]
         msg['is_read'] = 1 if msg
       end
 
       @browsed_message_ids.clear
+      invalidate_counts
       set_feedback("Marked #{count} browsed messages as read", 156, 3)
 
       # Remove from view if in unread view
       if is_unread_view?
         @filtered_messages.select! { |m| m['is_read'].to_i == 0 }
         @index = 0
-        reset_threading if respond_to?(:reset_threading)
+        reset_threading
       end
 
       render_all
@@ -391,16 +403,13 @@ module Heathrow
 
       # EXACTLY LIKE RTFM
       # Initialize rcurses
-      File.write('/tmp/heathrow_start.txt', "Starting run method\n") if ENV['DEBUG']
       Rcurses.init!
-      File.write('/tmp/heathrow_start.txt', "Rcurses initialized\n", mode: 'a') if ENV['DEBUG']
 
       # Clear screen to remove any artifacts
       Rcurses.clear_screen
 
       # Get terminal size
       setup_display
-      File.write('/tmp/heathrow_start.txt', "Display setup complete: #{@w}x#{@h}\n", mode: 'a') if ENV['DEBUG']
 
       # Create panes and show skeleton immediately
       create_panes
@@ -440,8 +449,8 @@ module Heathrow
           end
           sort_messages
           @index = 0
-          reset_threading if respond_to?(:reset_threading)
-          restore_view_thread_mode if respond_to?(:restore_view_thread_mode)
+          reset_threading
+          restore_view_thread_mode
           @initial_load_done = true
           @needs_redraw = true
           # Preload the heavy mail gem so 'v' (attachments) doesn't lag
@@ -481,14 +490,14 @@ module Heathrow
               sort_messages
             end
             # Force re-organization in threaded mode
-            if @show_threaded && respond_to?(:reset_threading)
+            if @show_threaded
               reset_threading(true)
-              organize_current_messages(true) if respond_to?(:organize_current_messages)
+              organize_current_messages(true)
             end
             # Defer index restoration for threaded views (display_messages is empty
             # after reset_threading; it gets populated during render). For flat views,
             # resolve immediately since @filtered_messages is the navigation list.
-            if @show_threaded && respond_to?(:reset_threading)
+            if @show_threaded
               @pending_restore_id = selected_id
               @index = 0
             elsif selected_id
@@ -1143,7 +1152,7 @@ module Heathrow
       set_feedback("Deleted: #{name} (#{deleted_msgs} messages removed)", 156, 3)
 
       # Re-load the view to reflect removed messages
-      reset_threading if respond_to?(:reset_threading)
+      reset_threading
       switch_to_view(@current_view) if @current_view
     end
 
@@ -1362,10 +1371,15 @@ module Heathrow
         count_text = "#{total} sources"
       else
         # For message views, show unread/total plus starred
-        real_msgs = @filtered_messages.reject { |m| m['is_header'] || m['is_channel_header'] || m['is_thread_header'] || m['is_dm_header'] }
-        unread = real_msgs.count { |m| m['is_read'].to_i == 0 }
-        starred = real_msgs.count { |m| m['is_starred'].to_i == 1 }
-        total = real_msgs.size
+        if @cached_unread.nil?
+          real_msgs = @filtered_messages.reject { |m| header_message?(m) }
+          @cached_unread = real_msgs.count { |m| m['is_read'].to_i == 0 }
+          @cached_starred = real_msgs.count { |m| m['is_starred'].to_i == 1 }
+          @cached_total = real_msgs.size
+        end
+        unread = @cached_unread
+        starred = @cached_starred
+        total = @cached_total
         count_text = "#{unread} unread / #{total} msgs"
         count_text += " / #{starred}*" if starred > 0
       end
@@ -1392,7 +1406,7 @@ module Heathrow
 
       # Threading mode indicator
       mode_part = ""
-      if @current_view != 'S' && respond_to?(:thread_mode_label)
+      if @current_view != 'S'
         mode_part = " [#{thread_mode_label}]".fg(245)
       end
 
@@ -1520,7 +1534,7 @@ module Heathrow
       end
 
       # Build the line with timestamp, icon and sender
-      icon = respond_to?(:get_source_icon) ? get_source_icon(msg['source_type']) : '•'
+      icon = get_source_icon(msg['source_type'])
       line_prefix = "#{timestamp} #{icon} #{sender_display} "
 
       # Calculate remaining space for subject (use display_width for CJK)
@@ -1837,7 +1851,7 @@ module Heathrow
       show_loading("Loading sources...")
 
       # Reset threading state when changing views
-      reset_threading if respond_to?(:reset_threading)
+      reset_threading
       
       # Reload source colors to ensure they're fresh
       load_source_colors
@@ -1885,6 +1899,7 @@ module Heathrow
     
     def show_all_messages
       flush_pending_read
+      invalidate_counts
       @current_view = 'A'
       @current_folder = nil
       @in_source_view = false
@@ -1895,8 +1910,8 @@ module Heathrow
       @last_rendered_index = nil  # Force right pane refresh
 
       # Restore per-view threading mode
-      reset_threading if respond_to?(:reset_threading)
-      restore_view_thread_mode if respond_to?(:restore_view_thread_mode)
+      reset_threading
+      restore_view_thread_mode
 
       # Show view name instantly
       render_top_bar
@@ -1911,14 +1926,6 @@ module Heathrow
 
     def render_message_content
       current_msg = current_message
-
-      if ENV['DEBUG']
-        File.open('/tmp/heathrow_debug.log', 'a') do |f|
-          f.puts "render_message_content START"
-          f.puts "  @index: #{@index}"
-          f.puts "  @filtered_messages[@index] exists: #{!current_msg.nil?}"
-        end
-      end
 
       # Reset scroll position when switching messages
       if @last_rendered_index != @index
@@ -1947,21 +1954,9 @@ module Heathrow
       end
 
       # Special handling for headers (channel headers, thread headers, etc.)
-      if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header']
+      if header_message?(msg)
         render_header_summary(msg)
         return
-      end
-      
-      if ENV['DEBUG']
-        File.open('/tmp/heathrow_debug.log', 'a') do |f|
-          f.puts "  msg details:"
-          f.puts "    id: #{msg['id']}"
-          f.puts "    sender: #{msg['sender']}"
-          f.puts "    recipient: #{msg['recipient']}"
-          f.puts "    subject: #{msg['subject']}"
-          f.puts "    timestamp: #{msg['timestamp'].inspect}"
-          f.puts "    source_type: #{msg['source_type'].inspect}"
-        end
       end
       
       # Format message header
@@ -2000,23 +1995,20 @@ module Heathrow
       else
         # Regular message display
         header << "From: #{msg['sender']}".fg(2) if msg['sender']
-        # Show recipients (To field)
+        # Show recipients (To field, already parsed by normalize_message_row)
         to = msg['recipients'] || msg['recipient']
         if to
-          to_list = to.is_a?(String) ? (JSON.parse(to) rescue [to]) : to
-          to_str = to_list.is_a?(Array) ? to_list.join(', ') : to_list.to_s
+          to_str = to.is_a?(Array) ? to.join(', ') : to.to_s
           header << "To: #{to_str}".fg(2) unless to_str.empty?
         end
-        # Show CC recipients
+        # Show CC recipients (already parsed by normalize_message_row)
         cc = msg['cc']
         if cc
-          cc_list = cc.is_a?(String) ? (JSON.parse(cc) rescue [cc]) : cc
-          cc_str = cc_list.is_a?(Array) ? cc_list.join(', ') : cc_list.to_s
+          cc_str = cc.is_a?(Array) ? cc.join(', ') : cc.to_s
           header << "Cc: #{cc_str}".fg(2) unless cc_str.empty?
         end
         # For weechat, show channel name from metadata instead of content preview
         meta = msg['metadata']
-        meta = JSON.parse(meta) if meta.is_a?(String) rescue nil
         if meta.is_a?(Hash) && meta['channel_name']
           header << "Subject: #{meta['channel_name']}".b.fg(1)
         elsif msg['subject']
@@ -2024,22 +2016,9 @@ module Heathrow
         end
       end
       
-      if ENV['DEBUG']
-        File.open('/tmp/heathrow_debug.log', 'a') do |f|
-          f.puts "  About to parse timestamp: #{msg['timestamp'].inspect}"
-        end
-      end
-      
       # Parse timestamp using helper method
       date_str = parse_timestamp(msg['timestamp'], '%Y-%m-%d %H:%M:%S') || "Unknown date"
-      
-      if ENV['DEBUG']
-        File.open('/tmp/heathrow_debug.log', 'a') do |f|
-          f.puts "  Final date_str: #{date_str}"
-          f.puts "  About to add header lines"
-        end
-      end
-      
+
       header << "Date: #{date_str}".fg(240)
       if msg['source_type']
         source_label = case msg['source_type']
@@ -2050,10 +2029,10 @@ module Heathrow
         header << "Type: #{source_label}".fg(get_source_color(msg))
       end
 
-      # Show labels (if any beyond the folder name)
+      # Show labels (if any beyond the folder name, already parsed by normalize_message_row)
       labels = msg['labels']
-      labels = JSON.parse(labels) if labels.is_a?(String) rescue []
-      if labels.is_a?(Array) && labels.size > 0
+      labels = [] unless labels.is_a?(Array)
+      if labels.size > 0
         # Skip folder name (first label) if it matches the folder
         display_labels = labels.reject { |l| l == msg['folder'] }
         unless display_labels.empty?
@@ -2061,11 +2040,6 @@ module Heathrow
         end
       end
       
-      if ENV['DEBUG']
-        File.open('/tmp/heathrow_debug.log', 'a') do |f|
-          f.puts "  Header built successfully, about to format content"
-        end
-      end
       header << ("─" * 60).fg(238)
       
       # Format message body — prefer HTML rendered via w3m
@@ -2134,13 +2108,6 @@ module Heathrow
         content = content_parts.join("\n")
       end
       
-      if ENV['DEBUG']
-        File.open('/tmp/heathrow_debug.log', 'a') do |f|
-          f.puts "  Content formatted, about to set pane text"
-          f.puts "  Content length: #{content.length}"
-        end
-      end
-
       # Ensure content is UTF-8 compatible (handle emails with various encodings)
       # Create a mutable copy if frozen, then fix encoding
       content = content.dup if content.frozen?
@@ -2154,9 +2121,8 @@ module Heathrow
       # Colorize email content (quote levels + signature)
       content = colorize_email_content(content)
 
-      # Store maildir file path for calendar parser
+      # Store maildir file path for calendar parser (metadata already parsed by normalize_message_row)
       meta = msg['metadata']
-      meta = JSON.parse(meta) if meta.is_a?(String) rescue nil
       @_current_render_msg_file = meta['maildir_file'] if meta.is_a?(Hash)
 
       # Attachment list under header, before body
@@ -2193,11 +2159,6 @@ module Heathrow
       @panes[:right].text = full_text
       @panes[:right].refresh
 
-      if ENV['DEBUG']
-        File.open('/tmp/heathrow_debug.log', 'a') do |f|
-          f.puts "render_message_content END - success"
-        end
-      end
     end
 
     def render_header_summary(header_msg)
@@ -2392,7 +2353,7 @@ module Heathrow
       end
 
       # Force threaded view to rebuild organizer with new messages
-      if @show_threaded && respond_to?(:organize_current_messages)
+      if @show_threaded
         organize_current_messages(true)
       end
 
@@ -2455,7 +2416,7 @@ module Heathrow
       }
     end
 
-    def apply_view_filters_with_limit(view, limit)
+    def build_db_filters(view)
       filters = view[:filters] || {}
       db_filters = {}
       if filters['rules'].is_a?(Array)
@@ -2476,6 +2437,11 @@ module Heathrow
           end
         end
       end
+      db_filters
+    end
+
+    def apply_view_filters_with_limit(view, limit)
+      db_filters = build_db_filters(view)
       @filtered_messages = @db.get_messages(db_filters, limit, 0, light: true)
     end
 
@@ -2552,6 +2518,7 @@ module Heathrow
     # View switching
     def show_new_messages
       flush_pending_read
+      invalidate_counts
       @current_view = 'N'
       @current_folder = nil
       @in_source_view = false
@@ -2561,8 +2528,8 @@ module Heathrow
       @last_rendered_index = nil  # Force right pane refresh
 
       # Restore per-view threading mode
-      reset_threading if respond_to?(:reset_threading)
-      restore_view_thread_mode if respond_to?(:restore_view_thread_mode)
+      reset_threading
+      restore_view_thread_mode
 
       render_top_bar
 
@@ -2585,6 +2552,7 @@ module Heathrow
 
     def switch_to_view(key)
       flush_pending_read
+      invalidate_counts
       @current_view = key
       @current_folder = nil
       @in_source_view = false
@@ -2592,8 +2560,8 @@ module Heathrow
       @last_rendered_index = nil  # Force right pane refresh
 
       # Restore per-view threading mode
-      reset_threading if respond_to?(:reset_threading)
-      restore_view_thread_mode if respond_to?(:restore_view_thread_mode)
+      reset_threading
+      restore_view_thread_mode
 
       render_top_bar
 
@@ -2631,12 +2599,12 @@ module Heathrow
 
     def apply_view_filters(view)
       filters = view[:filters] || {}
-      
+
       # Check for special filter types
       if filters['special'] == 'uncategorized'
         # Get all messages first
         all_messages = @db.get_messages({}, 1000, 0, light: true)
-        
+
         # Get messages from all other configured views
         categorized_ids = Set.new
 
@@ -2648,7 +2616,7 @@ module Heathrow
             other_view[:filters].each do |key, value|
               symbolized_filters[key.to_sym] = value
             end
-            
+
             view_messages = @db.get_messages(symbolized_filters, 1000, 0, light: true)
             view_messages.each { |msg| categorized_ids.add(msg['id']) }
           end
@@ -2657,32 +2625,12 @@ module Heathrow
         # Filter to only uncategorized messages
         @filtered_messages = all_messages.reject { |msg| categorized_ids.include?(msg['id']) }
       else
-        # Parse rules-based filters into database filter format
-        db_filters = {}
+        db_filters = build_db_filters(view)
 
-        if filters['rules'].is_a?(Array)
-          # Convert rules array to simple database filters
-          filters['rules'].each do |rule|
-            field = rule['field']
-            value = rule['value']
-            case rule['op']
-            when '='
-              db_filters[field.to_sym] = value
-            when 'like'
-              case field
-              when 'search'  then db_filters[:search] = value
-              when 'sender'  then db_filters[:sender_pattern] = value
-              when 'subject' then db_filters[:subject_pattern] = value
-              when 'folder'  then db_filters[:maildir_folder] = value
-              when 'label'   then db_filters[:label] = value
-              when 'source'  then db_filters[:source_name] = value
-              end
-            end
-          end
-        else
-          # Legacy simple filters - convert string keys to symbols
+        # Legacy simple filters (no rules array)
+        if !filters['rules'].is_a?(Array)
           filters.each do |key, value|
-            next if key == 'rules'  # Skip rules key
+            next if key == 'rules'
             db_filters[key.to_sym] = value
           end
         end
@@ -2694,7 +2642,6 @@ module Heathrow
           ensure_all_feeds_loaded(db_filters[:source_id].to_i)
         end
       end
-
     end
     
     # Message operations
@@ -2748,7 +2695,7 @@ module Heathrow
       end
       
       # Re-render
-      render_message_list_threaded if respond_to?(:render_message_list_threaded)
+      render_message_list_threaded
       render_message_content
     end
     
@@ -2786,7 +2733,7 @@ module Heathrow
       end
       
       # Re-render
-      render_message_list_threaded if respond_to?(:render_message_list_threaded)
+      render_message_list_threaded
       
       # Restore position if we had one saved
       if restore_position
@@ -2820,7 +2767,7 @@ module Heathrow
     def toggle_tag
       msg = current_message
       return unless msg
-      return if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header'] || msg['is_dm_header']
+      return if header_message?(msg)
       return unless msg['id']
 
       if @tagged_messages.include?(msg['id'])
@@ -2847,7 +2794,7 @@ module Heathrow
 
       count = 0
       @filtered_messages.each do |msg|
-        next if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header'] || msg['is_dm_header']
+        next if header_message?(msg)
         next unless msg['id']
 
         match = [msg['sender'], msg['subject'], msg['content']].compact.any? { |f| f.match?(regex) }
@@ -2867,7 +2814,7 @@ module Heathrow
 
     # Tag/untag all messages in current view
     def tag_all_toggle
-      msgs = @filtered_messages.reject { |m| m['is_header'] || m['is_channel_header'] || m['is_thread_header'] || m['is_dm_header'] }
+      msgs = @filtered_messages.reject { |m| header_message?(m) }
       ids = msgs.map { |m| m['id'] }.compact
       if ids.all? { |id| @tagged_messages.include?(id) }
         # All tagged, untag all
@@ -2895,7 +2842,7 @@ module Heathrow
         idx = (@index + 1 + i) % display.size
         msg = display[idx]
         next unless msg
-        next if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header'] || msg['is_dm_header']
+        next if header_message?(msg)
         if msg['is_read'].to_i == 0
           @index = idx
           track_browsed_message
@@ -2914,14 +2861,14 @@ module Heathrow
         if unread_msgs.any?
           # Re-render to rebuild display_messages with uncollapsed sections
           organize_current_messages(true)
-          render_message_list_threaded if respond_to?(:render_message_list_threaded)
+          render_message_list_threaded
           new_display = @display_messages || @filtered_messages
           # Find the first visible unread after current position
           new_display.size.times do |i|
             idx = (@index + 1 + i) % new_display.size
             m = new_display[idx]
             next unless m && m['id'] && m['is_read'].to_i == 0
-            next if m['is_header'] || m['is_channel_header'] || m['is_thread_header'] || m['is_dm_header']
+            next if header_message?(m)
             @index = idx
             track_browsed_message
             render_all
@@ -2943,7 +2890,7 @@ module Heathrow
         idx = (@index - 1 - i) % size
         msg = display[idx]
         next unless msg
-        next if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header'] || msg['is_dm_header']
+        next if header_message?(msg)
         if msg['is_read'].to_i == 0
           @index = idx
           track_browsed_message
@@ -2960,14 +2907,14 @@ module Heathrow
         end
         if unread_msgs.any?
           organize_current_messages(true)
-          render_message_list_threaded if respond_to?(:render_message_list_threaded)
+          render_message_list_threaded
           new_display = @display_messages || @filtered_messages
           new_size = new_display.size
           new_size.times do |i|
             idx = (@index - 1 - i) % new_size
             m = new_display[idx]
             next unless m && m['id'] && m['is_read'].to_i == 0
-            next if m['is_header'] || m['is_channel_header'] || m['is_thread_header'] || m['is_dm_header']
+            next if header_message?(m)
             @index = idx
             track_browsed_message
             render_all
@@ -3053,7 +3000,7 @@ module Heathrow
     def open_message_external
       msg = current_message
       return unless msg
-      return if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header']
+      return if header_message?(msg)
       msg = ensure_full_message(msg)
 
       # Mark as read
@@ -3147,7 +3094,7 @@ module Heathrow
     def view_attachments
       msg = current_message
       return unless msg
-      return set_feedback("Select a message first", 245, 2) if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header'] || msg['is_dm_header']
+      return set_feedback("Select a message first", 245, 2) if header_message?(msg)
 
       # Load full message if needed (use numeric id only)
       msg_id = msg['id']
@@ -3354,7 +3301,7 @@ module Heathrow
           if @sort_order == 'unread'
             sort_messages
             # Reset threading to reorganize with new unread counts (preserve collapsed state)
-            reset_threading(true) if respond_to?(:reset_threading)
+            reset_threading(true)
           end
           
           # Update displays if UI is initialized
@@ -3451,6 +3398,8 @@ module Heathrow
         rows = nil
       end
 
+      organized_sections = (@show_threaded && @organizer) ? @organizer.get_organized_view(@sort_order, @sort_inverted) : nil
+
       if rows
         # Sync maildir flags for all affected messages
         count = rows.size
@@ -3465,8 +3414,8 @@ module Heathrow
           next unless list
           list.each { |m| m['is_read'] = 1 if m['id'] && m['is_read'].to_i == 0 }
         end
-        if @show_threaded && @organizer
-          @organizer.get_organized_view(@sort_order, @sort_inverted).each do |section|
+        if organized_sections
+          organized_sections.each do |section|
             next unless section[:messages]
             section[:messages].each { |m| m['is_read'] = 1 if m['is_read'].to_i == 0 }
           end
@@ -3481,14 +3430,15 @@ module Heathrow
         return if msgs.nil? || msgs.empty?
         count = mark_messages_read(msgs)
         # Also mark messages inside collapsed sections
-        if @show_threaded && @organizer
-          @organizer.get_organized_view(@sort_order, @sort_inverted).each do |section|
+        if organized_sections
+          organized_sections.each do |section|
             next unless section[:messages]
             count += mark_messages_read(section[:messages])
           end
         end
       end
 
+      invalidate_counts
       set_feedback("Marked #{count} messages as read", 156, 3)
       render_top_bar
       render_message_list
@@ -3499,7 +3449,7 @@ module Heathrow
     def mark_messages_read(msgs)
       count = 0
       msgs.each do |msg|
-        next if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header'] || msg['is_dm_header']
+        next if header_message?(msg)
         next if msg['is_read'].to_i == 1
         next unless msg['id']
         @db.mark_as_read(msg['id'])
@@ -3516,7 +3466,7 @@ module Heathrow
       return nil unless msg && @show_threaded && @organizer
 
       # If standing on a header, use its section_messages directly
-      if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header'] || msg['is_dm_header']
+      if header_message?(msg)
         return msg['section_messages'] if msg['section_messages']
       end
 
@@ -3524,7 +3474,7 @@ module Heathrow
       idx = @index - 1
       while idx >= 0
         prev = @display_messages[idx]
-        if prev && (prev['is_header'] || prev['is_channel_header'] || prev['is_thread_header'] || prev['is_dm_header'])
+        if prev && (header_message?(prev))
           return prev['section_messages'] if prev['section_messages']
           break
         end
@@ -3566,7 +3516,7 @@ module Heathrow
       # Toggle all messages in this section
       messages.each do |msg|
         next unless msg['id'] && !msg['id'].to_s.start_with?('header_')  # Skip synthetic headers
-        
+
         if all_read
           @db.mark_as_unread(msg['id'])
           msg['is_read'] = 0
@@ -3575,12 +3525,13 @@ module Heathrow
           msg['is_read'] = 1
         end
       end
-      
+      invalidate_counts
+
       # Re-sort if sorting by unread
       if @sort_order == 'unread'
         sort_messages
         # Reset threading to reorganize with new unread counts (preserve collapsed state)
-        reset_threading(true) if respond_to?(:reset_threading)
+        reset_threading(true)
       end
       
       # Update displays if UI is initialized
@@ -3601,6 +3552,7 @@ module Heathrow
 
       # Toggle the specific message
       current_read_status = msg['is_read'].to_i
+      invalidate_counts
 
       if current_read_status == 1
         success = @db.mark_as_unread(msg['id'])
@@ -3620,10 +3572,10 @@ module Heathrow
           if is_unread_view?
             if @show_threaded
               # In threaded view, need to reload filtered messages to rebuild threads
-              reset_threading if respond_to?(:reset_threading)
+              reset_threading
               @filtered_messages = @db.get_messages({is_read: false}, 1000, 0, light: true)
               sort_messages
-              organize_current_messages(force_reinit: true) if respond_to?(:organize_current_messages)
+              organize_current_messages(force_reinit: true)
               @index = [@index, filtered_messages_size - 1].min
               @index = 0 if @index < 0
             else
@@ -3640,7 +3592,7 @@ module Heathrow
       if @sort_order == 'unread'
         sort_messages
         # Reset threading to reorganize with new unread counts (preserve collapsed state)
-        reset_threading(true) if respond_to?(:reset_threading)
+        reset_threading(true)
       end
       
       # Update displays immediately if UI is initialized
@@ -3696,6 +3648,7 @@ module Heathrow
       return unless msg
       @db.toggle_star(msg['id'])
       msg['is_starred'] = msg['is_starred'] == 1 ? 0 : 1
+      invalidate_counts
 
       # Sync flagged status to Maildir file
       sync_maildir_flag(msg, 'F', msg['is_starred'] == 1)
@@ -3986,7 +3939,7 @@ module Heathrow
       @current_source_filter = "Folder: #{folder_name}"
 
       # Reset threading state so old @display_messages don't persist
-      reset_threading if respond_to?(:reset_threading)
+      reset_threading
 
       # Show progress while loading
       @panes[:bottom].text = " Loading #{folder_name}...".fg(226)
@@ -4273,7 +4226,7 @@ module Heathrow
       if @show_threaded
         @display_messages&.reject! { |m| m['id'] && filed_ids.include?(m['id']) }
         # Force organizer to rebuild from updated @filtered_messages
-        organize_current_messages(true) if respond_to?(:organize_current_messages)
+        organize_current_messages(true)
       end
       @tagged_messages.clear if @tagged_messages.size > 0
       @index = [@index, (@filtered_messages.size - 1)].min
@@ -4963,7 +4916,7 @@ module Heathrow
       @filtered_messages = results
       sort_messages
       @index = 0
-      reset_threading if respond_to?(:reset_threading)
+      reset_threading
       set_feedback("#{results.size} results for: #{query}", 156, 0)
       render_all
     end
@@ -4987,7 +4940,7 @@ module Heathrow
       else
         msg = current_message
         return unless msg
-        return if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header']
+        return if header_message?(msg)
 
         if @delete_marked.include?(msg['id'])
           @delete_marked.delete(msg['id'])
@@ -5052,7 +5005,7 @@ module Heathrow
       @delete_marked.clear
 
       # Force threaded view to rebuild with purged messages gone
-      reset_threading(true) if respond_to?(:reset_threading)
+      reset_threading(true)
 
       # Position cursor on the message above the first deleted one
       new_display = @display_messages || @filtered_messages
@@ -5100,7 +5053,7 @@ module Heathrow
       msg = ensure_full_message(msg)
 
       # Don't allow replying to header messages
-      if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header'] || msg['is_dm_header']
+      if header_message?(msg)
         set_feedback("Cannot reply to section headers. Select a message.", 226, 3)
         render_bottom_bar
         return
@@ -5241,7 +5194,7 @@ module Heathrow
     def edit_message_content
       msg = current_message
       return unless msg
-      return if msg['is_header'] || msg['is_channel_header'] || msg['is_thread_header']
+      return if header_message?(msg)
       msg = ensure_full_message(msg)
 
       source_id = msg['source_id']
@@ -6051,9 +6004,9 @@ module Heathrow
       @panes[:right].w = @w - @panes[:left].w - 4
 
       # Reset threading for sort changes
-      reset_threading(true) if respond_to?(:reset_threading)
+      reset_threading(true)
       sort_messages
-      organize_current_messages(true) if respond_to?(:organize_current_messages)
+      organize_current_messages(true)
 
       Rcurses.clear_screen
       @panes.each_value { |p| p.cleanup if p.respond_to?(:cleanup) }
@@ -6322,13 +6275,13 @@ module Heathrow
       end
       
       # Reset threading state to force reorganization with new sort (preserve collapsed state)
-      reset_threading(true) if respond_to?(:reset_threading)
+      reset_threading(true)
       
       # Re-sort and redisplay messages
       sort_messages
       
       # Force reinit the organizer with the newly sorted messages
-      organize_current_messages(true) if respond_to?(:organize_current_messages)
+      organize_current_messages(true)
       
       @index = 0  # Reset to top
       render_all  # Re-render everything to show the new sort
@@ -6354,13 +6307,13 @@ module Heathrow
       end
       
       # Reset threading state to force reorganization with new sort (preserve collapsed state)
-      reset_threading(true) if respond_to?(:reset_threading)
+      reset_threading(true)
       
       # Re-sort and redisplay messages
       sort_messages
       
       # Force reinit the organizer with the newly sorted messages
-      organize_current_messages(true) if respond_to?(:organize_current_messages)
+      organize_current_messages(true)
       
       @index = 0  # Reset to top
       render_all  # Re-render everything
@@ -6386,7 +6339,11 @@ module Heathrow
 
       # Make sure we have a mutable array
       @filtered_messages = @filtered_messages.dup if @filtered_messages.frozen?
-      
+
+      # Pre-compute timestamp cache to avoid repeated parsing in sort comparisons
+      ts_cache = {}
+      @filtered_messages.each { |m| ts_cache[m.object_id] = timestamp_to_time(m['timestamp']) }
+
       begin
         case @sort_order
         when 'alphabetical'
@@ -6410,7 +6367,7 @@ module Heathrow
             else
               # If subjects are the same, sort by timestamp
               begin
-                timestamp_to_time(b["timestamp"]) <=> timestamp_to_time(a["timestamp"])
+                ts_cache[b.object_id] <=> ts_cache[a.object_id]
               rescue
                 0
               end
@@ -6428,7 +6385,7 @@ module Heathrow
             else
               # Safe timestamp comparison
               begin
-                timestamp_to_time(b["timestamp"]) <=> timestamp_to_time(a["timestamp"])
+                ts_cache[b.object_id] <=> ts_cache[a.object_id]
               rescue
                 0
               end
@@ -6443,7 +6400,7 @@ module Heathrow
             else
               # Safe timestamp comparison
               begin
-                timestamp_to_time(b["timestamp"]) <=> timestamp_to_time(a["timestamp"])
+                ts_cache[b.object_id] <=> ts_cache[a.object_id]
               rescue
                 0  # If timestamp parsing fails, consider them equal
               end
@@ -6460,7 +6417,7 @@ module Heathrow
               conv_cmp
             else
               begin
-                timestamp_to_time(b["timestamp"]) <=> timestamp_to_time(a["timestamp"])
+                ts_cache[b.object_id] <=> ts_cache[a.object_id]
               rescue
                 0
               end
@@ -6478,7 +6435,7 @@ module Heathrow
             else
               # Safe timestamp comparison
               begin
-                timestamp_to_time(b["timestamp"]) <=> timestamp_to_time(a["timestamp"])
+                ts_cache[b.object_id] <=> ts_cache[a.object_id]
               rescue
                 0  # If timestamp parsing fails, consider them equal
               end
@@ -6488,7 +6445,7 @@ module Heathrow
           # Sort by timestamp descending (newest first)
           @filtered_messages.sort! do |a, b|
             begin
-              timestamp_to_time(b["timestamp"]) <=> timestamp_to_time(a["timestamp"])
+              ts_cache[b.object_id] <=> ts_cache[a.object_id]
             rescue
               0  # If timestamp parsing fails, consider them equal
             end
@@ -6512,8 +6469,7 @@ module Heathrow
       @panes[:right].ix = 0  # Reset scroll position
       help_text = get_help_text  # Use the colored version directly
 
-      # Debug: write help text to file to verify colors are included
-      File.write('/tmp/heathrow_help_debug.txt', help_text) if ENV['DEBUG']
+
 
       # Just set the text and let rcurses handle everything
       @panes[:right].text = help_text
