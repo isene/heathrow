@@ -835,6 +835,8 @@ module Heathrow
         label_message
       when 'v'
         view_attachments
+      when 'Z'
+        open_in_timely
       when 'I'
         ai_assistant
       when 'V'
@@ -2995,6 +2997,83 @@ module Heathrow
       return false unless msg
       (msg['html_content'] && !msg['html_content'].to_s.strip.empty?) ||
         (msg['content'] && msg['content'] =~ /\A\s*<(!DOCTYPE|html|head|body)\b/i)
+    end
+
+    def open_in_timely
+      msg = current_message
+      return unless msg
+      msg = ensure_full_message(msg)
+
+      # Try to find a date from calendar data or message timestamp
+      timely_home = File.expand_path('~/.timely')
+      return set_feedback("Timely not configured (~/.timely missing)", 196, 3) unless File.directory?(timely_home)
+
+      # Check for ICS attachment or inline calendar data
+      date_str = nil
+      meta = msg['metadata']
+      meta = JSON.parse(meta) if meta.is_a?(String) rescue nil
+      file = meta['maildir_file'] if meta.is_a?(Hash)
+
+      if file && File.exist?(file)
+        begin
+          require 'mail'
+          mail = Mail.read(file)
+          if mail.multipart?
+            mail.parts.each do |part|
+              ct = (part.content_type || '').downcase
+              if ct.include?('calendar') || ct.include?('ics')
+                ics = part.decoded
+                vevent = ics[/BEGIN:VEVENT(.*?)END:VEVENT/m, 1]
+                if vevent
+                  vevent = vevent.gsub(/\r?\n[ \t]/, '')
+                  if vevent =~ /^DTSTART;TZID=[^:]*:(\d{8})/i ||
+                     vevent =~ /^DTSTART:(\d{8})/i ||
+                     vevent =~ /^DTSTART;VALUE=DATE:(\d{8})/i
+                    d = $1
+                    date_str = "#{d[0,4]}-#{d[4,2]}-#{d[6,2]}"
+                  end
+                end
+                break
+              end
+            end
+          end
+        rescue => e
+          # Fall through to timestamp
+        end
+      end
+
+      # Fallback: use message timestamp
+      unless date_str
+        ts = msg['timestamp'].to_i
+        date_str = Time.at(ts).strftime('%Y-%m-%d') if ts > 0
+      end
+
+      return set_feedback("Could not determine date for Timely", 245, 2) unless date_str
+
+      # Write goto file for Timely
+      File.write(File.join(timely_home, 'goto'), date_str)
+
+      # Also copy ICS to incoming if it has calendar data
+      if file && File.exist?(file)
+        begin
+          incoming = File.join(timely_home, 'incoming')
+          FileUtils.mkdir_p(incoming)
+          require 'mail'
+          mail = Mail.read(file)
+          mail.parts.each do |part|
+            ct = (part.content_type || '').downcase
+            if ct.include?('calendar') || ct.include?('ics')
+              ics_file = File.join(incoming, "heathrow_#{msg['id']}.ics")
+              File.write(ics_file, part.decoded) unless File.exist?(ics_file)
+              break
+            end
+          end
+        rescue => e
+          # Non-fatal
+        end
+      end
+
+      set_feedback("Sent to Timely: #{date_str}", 156, 0)
     end
 
     def open_message_external
