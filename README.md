@@ -139,10 +139,23 @@ Press `?` for full help. Here are the essentials:
 | `w` | Cycle pane width |
 | `Ctrl-b` | Cycle border style |
 | `D` | Cycle date format |
-| `o` | Cycle sort order |
+| `o` | Cycle sort order (Latest, A-Z, Sender, From, Conversation, Unread, Source) |
+| `Z` | Open calendar invite in [Timely](https://github.com/isene/timely) |
 | `P` | Preferences popup |
 | `?` | Help (press again for extended) |
 | `q` | Quit |
+
+### Sort Orders
+
+| Order | Description |
+|-------|-------------|
+| Latest | Newest messages first (default) |
+| A-Z | Alphabetical by subject |
+| Sender | Alphabetical by sender |
+| From | Group by sender, most recently active sender first |
+| Conversation | Group by thread/conversation |
+| Unread | Unread messages first |
+| Source | Group by source type |
 
 ## Configuration
 
@@ -199,6 +212,14 @@ Each source is a self-contained plugin. Sources crash independently without affe
 - Created by Geir Isene with [Claude Code](https://claude.ai/claude-code)
 - Built on [rcurses](https://github.com/isene/rcurses) TUI library
 - Inspired by [RTFM](https://github.com/isene/RTFM) file manager
+
+## Timely Integration
+
+Heathrow works with [Timely](https://github.com/isene/timely), a terminal calendar app:
+
+- **Z key**: On a calendar invite email, press `Z` to open it in Timely (extracts the event date from ICS data and copies the ICS for import)
+- **Wezterm mailto**: Click any email address in wezterm to compose in Heathrow
+- **From sort**: The "From" sort order groups messages by sender with the most recently active person at the top, perfect for family or team views
 
 ## License
 
