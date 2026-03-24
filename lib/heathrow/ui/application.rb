@@ -1397,6 +1397,7 @@ module Heathrow
                    when 'latest' then 'Latest'
                    when 'alphabetical' then 'A-Z'
                    when 'sender' then 'Sender'
+                   when 'from' then 'From'
                    when 'unread' then 'Unread'
                    when 'source' then 'Source'
                    else @sort_order.capitalize
@@ -5898,7 +5899,7 @@ module Heathrow
         ['%d %b %H:%M', 'DD Mon HH:MM'],
         ['%b %d %H:%M', 'Mon DD HH:MM']
       ]
-      sort_orders = ['latest', 'alphabetical', 'sender', 'conversation', 'unread', 'source']
+      sort_orders = ['latest', 'alphabetical', 'sender', 'from', 'conversation', 'unread', 'source']
       border_labels = ['none', 'right', 'both', 'left']
       # Build view choices: A, N, plus any user-defined views
       view_choices = [['A', 'All'], ['N', 'New/Unread']]
@@ -6328,11 +6329,12 @@ module Heathrow
     end
     
     def cycle_sort_order
-      # Cycle through: latest -> alphabetical -> sender -> conversation -> unread -> source -> latest
+      # Cycle through: latest -> alphabetical -> sender -> from -> conversation -> unread -> source -> latest
       @sort_order = case @sort_order
       when 'latest' then 'alphabetical'
       when 'alphabetical' then 'sender'
-      when 'sender' then 'conversation'
+      when 'sender' then 'from'
+      when 'from' then 'conversation'
       when 'conversation' then 'unread'
       when 'unread' then 'source'
       else 'latest'  # This handles 'source' and any other value
@@ -6468,6 +6470,24 @@ module Heathrow
               rescue
                 0
               end
+            end
+          end
+        when 'from'
+          # Group by sender, most recently active sender first
+          # Within each sender group, newest message first
+          latest_per_sender = {}
+          @filtered_messages.each do |m|
+            s = display_sender(m).downcase
+            t = ts_cache[m.object_id] || Time.at(0)
+            latest_per_sender[s] = t if !latest_per_sender[s] || t > latest_per_sender[s]
+          end
+          @filtered_messages.sort! do |a, b|
+            sa = display_sender(a).downcase
+            sb = display_sender(b).downcase
+            if sa == sb
+              (ts_cache[b.object_id] || Time.at(0)) <=> (ts_cache[a.object_id] || Time.at(0))
+            else
+              (latest_per_sender[sb] || Time.at(0)) <=> (latest_per_sender[sa] || Time.at(0))
             end
           end
         when 'unread'
