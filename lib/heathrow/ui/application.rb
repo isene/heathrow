@@ -748,7 +748,7 @@ module Heathrow
         load_more_messages
       when 'w'
         change_width
-      when 'Y'
+      when 'Y', 'C-Y'
         copy_right_pane_to_clipboard
       when 'c'
         set_view_top_bg
