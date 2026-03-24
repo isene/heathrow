@@ -375,9 +375,9 @@ module Heathrow
       # Handle sender pattern (supports regex via pipe separation)
       if filters[:sender_pattern]
         patterns = filters[:sender_pattern].split('|')
-        conditions = patterns.map { "sender LIKE ?" }.join(' OR ')
+        conditions = patterns.map { "(sender LIKE ? OR sender_name LIKE ?)" }.join(' OR ')
         query += " AND (#{conditions})"
-        params += patterns.map { |p| "%#{p}%" }
+        patterns.each { |p| params += ["%#{p}%", "%#{p}%"] }
       end
       
       # Handle subject pattern
