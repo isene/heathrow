@@ -841,6 +841,8 @@ module Heathrow
         ai_assistant
       when 'V'
         toggle_inline_image
+      when '@'
+        address_book_menu
       when 'ESC', "\e"
         if @showing_image
           clear_inline_image
@@ -2043,10 +2045,10 @@ module Heathrow
         end
       end
       
-      header << ("─" * 60).fg(238)
-      
-      # Format message body — prefer HTML rendered via w3m
       pane_w = @panes[:right].w rescue 80
+      header << ("─" * (pane_w - 2)).fg(238)
+
+      # Format message body — prefer HTML rendered via w3m
       render_width = [pane_w - 2, 40].max
       content = nil
       if msg['html_content'] && !msg['html_content'].to_s.strip.empty?
@@ -4757,6 +4759,7 @@ module Heathrow
         ai_reply_with_draft(msg, response.strip)
       when 'y'
         IO.popen('xclip -selection clipboard', 'w') { |io| io.write(response.strip) } rescue nil
+        IO.popen('xclip -selection primary', 'w') { |io| io.write(response.strip) } rescue nil
         set_feedback("Draft copied to clipboard", 156, 2)
       end
       @panes[:right].content_update = true
@@ -4852,6 +4855,7 @@ module Heathrow
       chr = getchr
       if chr == 'y'
         IO.popen('xclip -selection clipboard', 'w') { |io| io.write(response.strip) } rescue nil
+        IO.popen('xclip -selection primary', 'w') { |io| io.write(response.strip) } rescue nil
         set_feedback("Corrected text copied to clipboard", 156, 2)
       end
       @panes[:right].content_update = true
@@ -6898,8 +6902,9 @@ Required: URL, optional CSS selector
    #{"D".fg(10)}       = Cycle date/time format
    #{"o".fg(10)}       = Cycle sort order (newest/oldest/unread first)
    #{"i".fg(10)}       = Invert sort order (toggle reverse)
-   #{"Y".fg(10)}       = Copy right pane content to clipboard
+   #{"Y/C-y".fg(10)}   = Copy right pane content to clipboard
    #{"P".fg(10)}       = Settings popup (theme, format, etc.)
+   #{"@".fg(10)}       = Address book (a=add sender, e=edit file)
 #{custom_bindings_help}
  Press #{"?".fg(10)} again for extended help • Any other key to continue
       HELP
@@ -7121,7 +7126,8 @@ Required: URL, optional CSS selector
       msg = current_message
       return unless msg && msg['id']
       id_str = "heathrow:#{msg['id']}"
-      IO.popen('xclip -selection clipboard', 'w') { |io| io.write(id_str) }
+      IO.popen('xclip -selection clipboard', 'w') { |io| io.write(id_str) } rescue nil
+      IO.popen('xclip -selection primary', 'w') { |io| io.write(id_str) } rescue nil
       set_feedback("Message ID #{msg['id']} copied", 156, 2)
     rescue => e
       set_feedback("Copy failed: #{e.message}", 196, 2)
@@ -7132,13 +7138,77 @@ Required: URL, optional CSS selector
       if text && !text.strip.empty?
         # Strip ANSI codes for clean clipboard content
         clean = text.gsub(/\e\[[0-9;]*m/, '')
-        IO.popen('xclip -selection clipboard', 'w') { |io| io.write(clean) }
+        IO.popen('xclip -selection clipboard', 'w') { |io| io.write(clean) } rescue nil
+        IO.popen('xclip -selection primary', 'w') { |io| io.write(clean) } rescue nil
         set_feedback("Copied to clipboard", 156, 2)
       else
         set_feedback("Nothing to copy", 196, 2)
       end
     rescue => e
       set_feedback("Copy failed: #{e.message}", 196, 2)
+    end
+
+    # Address book: add sender or edit file
+    def address_book_menu
+      @panes[:bottom].text = " @: a=Add sender to address book, e=Edit address book".fg(245)
+      @panes[:bottom].refresh
+      chr = getchr
+      case chr
+      when 'a'
+        add_sender_to_address_book
+      when 'e'
+        edit_address_book
+      else
+        set_feedback("Cancelled", 245, 1)
+      end
+    end
+
+    def add_sender_to_address_book
+      msg = current_message
+      return set_feedback("No message selected", 196, 2) unless msg
+
+      sender = msg['sender'].to_s.strip
+      sender_name = msg['sender_name'].to_s.strip
+      return set_feedback("No sender", 196, 2) if sender.empty?
+
+      # Build full address: "Name <email>" or just "email"
+      full = if sender_name.empty? || sender_name == sender
+               sender
+             else
+               "#{sender_name} <#{sender}>"
+             end
+
+      # Suggest alias from name or email local part
+      suggested = if !sender_name.empty? && sender_name != sender
+                    sender_name.split.first.downcase
+                  else
+                    sender.split('@').first.downcase
+                  end
+
+      @panes[:bottom].text = " Add: #{full}".fg(156)
+      @panes[:bottom].refresh
+      alias_name = @panes[:bottom].ask(" Alias: ", suggested)
+      return set_feedback("Cancelled", 245, 1) if alias_name.nil? || alias_name.strip.empty?
+      alias_name = alias_name.strip.gsub(/\s+/, '.')
+
+      ab_path = File.expand_path('~/setup/addressbook')
+      File.open(ab_path, 'a') { |f| f.puts "alias #{alias_name} #{full}" }
+      @address_book = AddressBook.new(ab_path)
+      set_feedback("Added: #{alias_name} → #{full}", 156, 3)
+    rescue => e
+      set_feedback("Failed: #{e.message}", 196, 2)
+    end
+
+    def edit_address_book
+      ab_path = File.expand_path('~/setup/addressbook')
+      editor = ENV['EDITOR'] || 'vim'
+      Rcurses.clear_screen
+      system("#{editor} #{ab_path}")
+      @address_book = AddressBook.new(ab_path)
+      setup_display
+      create_panes
+      render_all
+      set_feedback("Address book reloaded", 156, 2)
     end
 
     def set_view_top_bg
@@ -8171,7 +8241,6 @@ Required: URL, optional CSS selector
 
         # Format the event for display
         lines = []
-        lines << ("─" * 50).fg(238)
         lines << "Calendar Event".b.fg(226)
         lines << ""
         lines << "WHAT:  #{event[:summary]}".fg(156) if event[:summary]
@@ -8192,7 +8261,6 @@ Required: URL, optional CSS selector
         end
         # Skip description (email body already shows it, and ICS descriptions
         # often contain raw URLs that can overflow the pane)
-        lines << ("─" * 50).fg(238)
         lines.join("\n")
       rescue => e
         nil  # Don't crash on calendar parse errors

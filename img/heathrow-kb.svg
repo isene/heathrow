@@ -1,0 +1,321 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 560" width="1500" height="560" font-family="monospace, Courier New, Courier">
+  <defs>
+    <style>
+      .key { fill: #333; stroke: #555; stroke-width: 1; rx: 5; ry: 5; }
+      .kw { fill: #2a2a2a; stroke: #555; stroke-width: 1; rx: 5; ry: 5; }
+      .kl { font-size: 12px; fill: #bbb; font-weight: bold; text-anchor: middle; }
+      .lo { font-size: 8.5px; fill: #FF8888; text-anchor: middle; }
+      .up { font-size: 8.5px; fill: #88BBFF; text-anchor: middle; }
+      .ct { font-size: 10px; fill: #88FF88; }
+      .sp { font-size: 8.5px; fill: #DDAAFF; text-anchor: middle; }
+      .nv { font-size: 8.5px; fill: #bbb; text-anchor: middle; }
+    </style>
+  </defs>
+  <rect width="1500" height="560" fill="#1a1a1a" rx="8"/>
+  <text x="470" y="22" text-anchor="middle" font-size="15" font-weight="bold" fill="#fff">Heathrow Keyboard Reference</text>
+
+  <!-- Row 0: Esc -->
+  <rect x="10" y="34" width="58" height="55" class="key"/>
+  <text x="39" y="54" class="kl">Esc</text>
+  <text x="39" y="80" class="lo">quit</text>
+
+  <!-- Row 1: Number row  kw=62 gap=4 -->
+  <rect x="10" y="97" width="58" height="55" class="key"/>
+  <text x="39" y="127" class="kl">` ~</text>
+
+  <rect x="72" y="97" width="62" height="55" class="key"/>
+  <text x="103" y="117" class="kl">1</text>
+  <text x="103" y="143" class="lo">view 1</text>
+
+  <rect x="138" y="97" width="62" height="55" class="key"/>
+  <text x="169" y="117" class="kl">2</text>
+  <text x="169" y="143" class="lo">view 2</text>
+
+  <rect x="204" y="97" width="62" height="55" class="key"/>
+  <text x="235" y="117" class="kl">3</text>
+  <text x="235" y="143" class="lo">view 3</text>
+
+  <rect x="270" y="97" width="62" height="55" class="key"/>
+  <text x="301" y="117" class="kl">4</text>
+  <text x="301" y="143" class="lo">view 4</text>
+
+  <rect x="336" y="97" width="62" height="55" class="key"/>
+  <text x="367" y="117" class="kl">5</text>
+  <text x="367" y="143" class="lo">view 5</text>
+
+  <rect x="402" y="97" width="62" height="55" class="key"/>
+  <text x="433" y="117" class="kl">6</text>
+  <text x="433" y="143" class="lo">view 6</text>
+
+  <rect x="468" y="97" width="62" height="55" class="key"/>
+  <text x="499" y="117" class="kl">7</text>
+  <text x="499" y="143" class="lo">view 7</text>
+
+  <rect x="534" y="97" width="62" height="55" class="key"/>
+  <text x="565" y="117" class="kl">8</text>
+  <text x="565" y="143" class="lo">view 8</text>
+
+  <rect x="600" y="97" width="62" height="55" class="key"/>
+  <text x="631" y="117" class="kl">9</text>
+  <text x="631" y="143" class="lo">view 9</text>
+
+  <rect x="666" y="97" width="62" height="55" class="key"/>
+  <text x="697" y="117" class="kl">0</text>
+  <text x="697" y="143" class="lo">view 0</text>
+
+  <rect x="732" y="97" width="62" height="55" class="key"/>
+  <text x="763" y="115" class="kl">- _</text>
+
+  <rect x="798" y="97" width="62" height="55" class="key"/>
+  <text x="829" y="115" class="kl">= +</text>
+  <text x="829" y="140" class="sp">+ fav folder</text>
+
+  <rect x="864" y="97" width="76" height="55" class="kw"/>
+  <text x="902" y="130" class="nv">Bksp</text>
+
+  <!-- Row 2: QWERTY  start x=10+80=90 offset, kw=62 -->
+  <rect x="10" y="160" width="76" height="55" class="kw"/>
+  <text x="48" y="183" class="nv">Tab</text>
+  <text x="48" y="206" class="nv">scroll R</text>
+
+  <rect x="90" y="160" width="62" height="55" class="key"/>
+  <text x="121" y="176" class="kl">Q</text>
+  <text x="121" y="194" class="up">Force quit</text>
+  <text x="121" y="207" class="lo">quit</text>
+
+  <rect x="156" y="160" width="62" height="55" class="key"/>
+  <text x="187" y="176" class="kl">W</text>
+  <text x="187" y="207" class="lo">width</text>
+
+  <rect x="222" y="160" width="62" height="55" class="key"/>
+  <text x="253" y="176" class="kl">E</text>
+  <text x="253" y="194" class="up">Edit as new</text>
+  <text x="253" y="207" class="lo">reply+edit</text>
+
+  <rect x="288" y="160" width="62" height="55" class="key"/>
+  <text x="319" y="176" class="kl">R</text>
+  <text x="319" y="194" class="up">Read/Unrd</text>
+  <text x="319" y="207" class="lo">reply</text>
+
+  <rect x="354" y="160" width="62" height="55" class="key"/>
+  <text x="385" y="176" class="kl">T</text>
+  <text x="385" y="194" class="up">Tag all</text>
+  <text x="385" y="207" class="lo">tag</text>
+
+  <rect x="420" y="160" width="62" height="55" class="key"/>
+  <text x="451" y="176" class="kl">Y</text>
+  <text x="451" y="194" class="up">Copy pane</text>
+  <text x="451" y="207" class="lo">copy ID</text>
+
+  <rect x="486" y="160" width="62" height="55" class="key"/>
+  <text x="517" y="176" class="kl">U</text>
+
+  <rect x="552" y="160" width="62" height="55" class="key"/>
+  <text x="583" y="176" class="kl">I</text>
+  <text x="583" y="194" class="up">AI assist</text>
+  <text x="583" y="207" class="lo">invert</text>
+
+  <rect x="618" y="160" width="62" height="55" class="key"/>
+  <text x="649" y="176" class="kl">O</text>
+  <text x="649" y="207" class="lo">sort</text>
+
+  <rect x="684" y="160" width="62" height="55" class="key"/>
+  <text x="715" y="176" class="kl">P</text>
+  <text x="715" y="194" class="up">Prefs</text>
+  <text x="715" y="207" class="lo">prev unrd</text>
+
+  <rect x="750" y="160" width="62" height="55" class="key"/>
+  <text x="781" y="176" class="kl">[ {</text>
+
+  <rect x="816" y="160" width="62" height="55" class="key"/>
+  <text x="847" y="176" class="kl">] }</text>
+
+  <rect x="882" y="160" width="58" height="55" class="key"/>
+  <text x="911" y="190" class="kl">\</text>
+
+  <!-- Row 3: ASDF  start x=10+90=100 offset -->
+  <rect x="10" y="223" width="86" height="55" class="kw"/>
+  <text x="53" y="255" class="nv">Ctrl</text>
+
+  <rect x="100" y="223" width="62" height="55" class="key"/>
+  <text x="131" y="239" class="kl">A</text>
+  <text x="131" y="262" class="up">All msgs</text>
+
+  <rect x="166" y="223" width="62" height="55" class="key"/>
+  <text x="197" y="239" class="kl">S</text>
+  <text x="197" y="257" class="up">Sources</text>
+  <text x="197" y="270" class="lo">save</text>
+
+  <rect x="232" y="223" width="62" height="55" class="key"/>
+  <text x="263" y="239" class="kl">D</text>
+  <text x="263" y="257" class="up">Date fmt</text>
+  <text x="263" y="270" class="lo">del mark</text>
+
+  <rect x="298" y="223" width="62" height="55" class="key"/>
+  <text x="329" y="239" class="kl">F</text>
+  <text x="329" y="257" class="up">Favorites</text>
+  <text x="329" y="270" class="lo">forward</text>
+
+  <rect x="364" y="223" width="62" height="55" class="key"/>
+  <text x="395" y="239" class="kl">G</text>
+  <text x="395" y="257" class="up">View mode</text>
+  <text x="395" y="270" class="lo">reply all</text>
+
+  <rect x="430" y="223" width="62" height="55" class="key"/>
+  <text x="461" y="239" class="kl">H</text>
+  <text x="461" y="270" class="nv">h = back</text>
+
+  <rect x="496" y="223" width="62" height="55" class="key"/>
+  <text x="527" y="239" class="kl">J</text>
+  <text x="527" y="257" class="up">Jump date</text>
+  <text x="527" y="270" class="nv">j = down</text>
+
+  <rect x="562" y="223" width="62" height="55" class="key"/>
+  <text x="593" y="239" class="kl">K</text>
+  <text x="593" y="257" class="up">Kill view</text>
+  <text x="593" y="270" class="nv">k = up</text>
+
+  <rect x="628" y="223" width="62" height="55" class="key"/>
+  <text x="659" y="239" class="kl">L</text>
+  <text x="659" y="257" class="up">Load more</text>
+  <text x="659" y="270" class="nv">l = open</text>
+
+  <rect x="694" y="223" width="62" height="55" class="key"/>
+  <text x="725" y="239" class="kl">; :</text>
+
+  <rect x="760" y="223" width="62" height="55" class="key"/>
+  <text x="791" y="255" class="kl">'</text>
+
+  <rect x="826" y="223" width="114" height="55" class="kw"/>
+  <text x="883" y="248" class="nv">Enter</text>
+  <text x="883" y="268" class="nv">open msg</text>
+
+  <!-- Row 4: ZXCV  start x=10+100=110 offset -->
+  <rect x="10" y="286" width="96" height="55" class="kw"/>
+  <text x="58" y="318" class="nv">Shift</text>
+
+  <rect x="110" y="286" width="62" height="55" class="key"/>
+  <text x="141" y="302" class="kl">Z</text>
+  <text x="141" y="325" class="up">Timely</text>
+
+  <rect x="176" y="286" width="62" height="55" class="key"/>
+  <text x="207" y="302" class="kl">X</text>
+  <text x="207" y="325" class="lo">browser</text>
+
+  <rect x="242" y="286" width="62" height="55" class="key"/>
+  <text x="273" y="302" class="kl">C</text>
+
+  <rect x="308" y="286" width="62" height="55" class="key"/>
+  <text x="339" y="302" class="kl">V</text>
+  <text x="339" y="320" class="up">Inline img</text>
+  <text x="339" y="333" class="lo">attach</text>
+
+  <rect x="374" y="286" width="62" height="55" class="key"/>
+  <text x="405" y="302" class="kl">B</text>
+  <text x="405" y="325" class="up">Browse</text>
+
+  <rect x="440" y="286" width="62" height="55" class="key"/>
+  <text x="471" y="302" class="kl">N</text>
+  <text x="471" y="320" class="up">New msgs</text>
+  <text x="471" y="333" class="lo">next unrd</text>
+
+  <rect x="506" y="286" width="62" height="55" class="key"/>
+  <text x="537" y="302" class="kl">M</text>
+  <text x="537" y="320" class="up">Mark read</text>
+  <text x="537" y="333" class="lo">compose</text>
+
+  <rect x="572" y="286" width="62" height="55" class="key"/>
+  <text x="603" y="302" class="kl">, &lt;</text>
+  <text x="603" y="325" class="sp">&lt; purge</text>
+
+  <rect x="638" y="286" width="62" height="55" class="key"/>
+  <text x="669" y="315" class="kl">. &gt;</text>
+
+  <rect x="704" y="286" width="62" height="55" class="key"/>
+  <text x="735" y="302" class="kl">/ ?</text>
+  <text x="735" y="320" class="sp">? help</text>
+  <text x="735" y="333" class="sp">/ search</text>
+
+  <rect x="770" y="286" width="170" height="55" class="kw"/>
+  <text x="855" y="318" class="nv">Shift</text>
+
+  <!-- Row 5: Bottom -->
+  <rect x="10" y="349" width="70" height="50" class="kw"/>
+  <text x="45" y="378" class="nv">Ctrl</text>
+
+  <rect x="84" y="349" width="58" height="50" class="kw"/>
+  <text x="113" y="378" class="nv">Alt</text>
+
+  <rect x="146" y="349" width="330" height="50" class="key"/>
+  <text x="311" y="372" class="nv">Space</text>
+  <text x="311" y="390" class="sp">collapse</text>
+
+  <rect x="480" y="349" width="62" height="50" class="key"/>
+  <text x="511" y="366" class="kl"># @</text>
+  <text x="511" y="382" class="sp">* star</text>
+  <text x="511" y="394" class="sp">@ addr book</text>
+
+  <!-- Nav cluster -->
+  <rect x="990" y="97" width="64" height="55" class="key"/>
+  <text x="1022" y="120" class="nv">Home</text>
+  <text x="1022" y="143" class="nv">first</text>
+
+  <rect x="1058" y="97" width="64" height="55" class="key"/>
+  <text x="1090" y="120" class="nv">End</text>
+  <text x="1090" y="143" class="nv">last</text>
+
+  <rect x="990" y="160" width="64" height="55" class="key"/>
+  <text x="1022" y="183" class="nv">PgUp</text>
+  <text x="1022" y="206" class="nv">page up</text>
+
+  <rect x="1058" y="160" width="64" height="55" class="key"/>
+  <text x="1090" y="183" class="nv">PgDn</text>
+  <text x="1090" y="206" class="nv">page dn</text>
+
+  <rect x="1022" y="286" width="60" height="55" class="key"/>
+  <text x="1052" y="310" class="nv">UP</text>
+  <text x="1052" y="333" class="nv">k</text>
+
+  <rect x="958" y="349" width="60" height="50" class="key"/>
+  <text x="988" y="370" class="nv">LEFT</text>
+  <text x="988" y="390" class="nv">h/back</text>
+
+  <rect x="1022" y="349" width="60" height="50" class="key"/>
+  <text x="1052" y="370" class="nv">DOWN</text>
+  <text x="1052" y="390" class="nv">j</text>
+
+  <rect x="1086" y="349" width="60" height="50" class="key"/>
+  <text x="1116" y="370" class="nv">RIGHT</text>
+  <text x="1116" y="390" class="nv">l/open</text>
+
+  <!-- Right panel: Ctrl combos -->
+  <rect x="1180" y="34" width="300" height="370" rx="6" fill="#1a2a1a" stroke="#4a6a4a" stroke-width="1"/>
+  <text x="1330" y="56" text-anchor="middle" font-size="13" font-weight="bold" fill="#66FF66">Ctrl Combos</text>
+  <text x="1194" y="80" class="ct">C-B   Toggle border</text>
+  <text x="1194" y="100" class="ct">C-F   Edit filter</text>
+  <text x="1194" y="120" class="ct">C-L   Redraw screen</text>
+  <text x="1194" y="140" class="ct">C-R   Refresh sources</text>
+  <text x="1194" y="160" class="ct">C-T   Tag by regex</text>
+  <text x="1194" y="180" class="ct">C-Y   Copy pane</text>
+
+  <text x="1330" y="220" text-anchor="middle" font-size="13" font-weight="bold" fill="#888">Navigation</text>
+  <text x="1194" y="244" class="ct" style="fill:#888">Enter     Open message</text>
+  <text x="1194" y="264" class="ct" style="fill:#888">Arrows    Navigate</text>
+  <text x="1194" y="284" class="ct" style="fill:#888">PgUp/Dn   Page scroll</text>
+  <text x="1194" y="304" class="ct" style="fill:#888">Home/End  First/Last</text>
+  <text x="1194" y="324" class="ct" style="fill:#888">Tab       Scroll right</text>
+  <text x="1194" y="344" class="ct" style="fill:#888">S-Arrows  Scroll pane</text>
+  <text x="1194" y="364" class="ct" style="fill:#888">Space     Collapse thread</text>
+  <text x="1194" y="384" class="ct" style="fill:#888">0-9       Switch views</text>
+
+  <!-- Legend -->
+  <rect x="20" y="470" width="14" height="14" fill="#3a2020" rx="2" stroke="#553333" stroke-width="0.5"/>
+  <text x="40" y="482" font-size="10" fill="#FF6666">lowercase</text>
+  <rect x="120" y="470" width="14" height="14" fill="#20203a" rx="2" stroke="#333355" stroke-width="0.5"/>
+  <text x="140" y="482" font-size="10" fill="#6699FF">UPPERCASE</text>
+  <rect x="240" y="470" width="14" height="14" fill="#203a20" rx="2" stroke="#335533" stroke-width="0.5"/>
+  <text x="260" y="482" font-size="10" fill="#66FF66">Ctrl+key</text>
+  <rect x="350" y="470" width="14" height="14" fill="#2a2030" rx="2" stroke="#443355" stroke-width="0.5"/>
+  <text x="370" y="482" font-size="10" fill="#CC99FF">special</text>
+  <text x="460" y="482" font-size="10" fill="#888">gray = navigation</text>
+</svg>

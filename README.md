@@ -121,8 +121,9 @@ Press `?` for full help. Here are the essentials:
 | `<` | Purge deleted |
 | `x` | Open in browser |
 | `v` | View attachments |
-| `Y` | Copy right pane to clipboard |
+| `Y`/`Ctrl-y` | Copy right pane to clipboard |
 | `y` | Copy message ID to clipboard |
+| `@` | Address book (a=add sender, e=edit) |
 
 ### Compose Prompt
 | Key | Action |
