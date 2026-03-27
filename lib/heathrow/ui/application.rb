@@ -736,6 +736,8 @@ module Heathrow
         jump_to_date
       when 'x'
         open_message_external
+      when 'X'
+        open_in_brrowser
       when 'HOME'
         go_first
       when 'END'
@@ -1945,6 +1947,9 @@ module Heathrow
         return
       end
 
+      # Auto-mark as read when content is rendered in the right pane
+      mark_current_message_as_read
+
       msg = current_msg
 
       # Lazily load full content if this was a light query result
@@ -2253,8 +2258,14 @@ module Heathrow
     end
     
     def render_bottom_bar
-      # Check if there's an active feedback message
-      if @feedback_expires_at && Time.now < @feedback_expires_at
+      # Check if there's an active feedback message (timed or sticky)
+      if @feedback_sticky && @feedback_message
+        if @panes[:bottom]
+          @panes[:bottom].text = " #{@feedback_message}".fg(@feedback_color || 156)
+          @panes[:bottom].refresh
+        end
+        return
+      elsif @feedback_expires_at && Time.now < @feedback_expires_at
         if @panes[:bottom]
           @panes[:bottom].text = " #{@feedback_message}".fg(@feedback_color || 156)
           @panes[:bottom].refresh
@@ -3173,6 +3184,47 @@ module Heathrow
       end
     end
     
+    def open_in_brrowser
+      unless system("which brrowser > /dev/null 2>&1")
+        set_feedback("brrowser not installed. See https://github.com/isene/brrowser", 196, 4)
+        return
+      end
+
+      msg = current_message
+      return unless msg
+      return if header_message?(msg)
+      msg = ensure_full_message(msg)
+
+      # Build URL from message (same logic as open_message_external)
+      url = nil
+      if message_has_html?(msg)
+        html = msg['html_content']
+        html = msg['content'] if !html || html.to_s.strip.empty?
+        tmpfile = "/tmp/heathrow-view-#{msg['id']}.html"
+        File.write(tmpfile, html)
+        url = "file://#{tmpfile}"
+      else
+        meta = msg['metadata']
+        if meta
+          parsed = meta.is_a?(Hash) ? meta : (JSON.parse(meta) rescue {})
+          url = parsed['link'] || parsed['url']
+        end
+        url ||= msg['url'] || msg['link'] || msg['permalink']
+        url ||= msg['external_id'] if msg['external_id']&.start_with?('http')
+      end
+
+      unless url
+        set_feedback("No URL or HTML content to open", 226, 3)
+        return
+      end
+
+      Rcurses.clear_screen
+      system("brrowser '#{url}'")
+      setup_display
+      create_panes
+      render_all
+    end
+
     def view_attachments
       msg = current_message
       return unless msg
@@ -3378,7 +3430,8 @@ module Heathrow
         success = @db.mark_as_read(msg['id'])
         if success
           msg['is_read'] = 1
-          
+          sync_maildir_flag(msg, 'S', true)
+
           # Re-sort if sorting by unread
           if @sort_order == 'unread'
             sort_messages
@@ -4297,13 +4350,19 @@ module Heathrow
       return if msgs.empty?
 
       count = 0
+      failed = 0
+      filed_ids = Set.new
       msgs.each do |msg|
-        file_single_message(msg, dest)
-        count += 1
+        begin
+          file_single_message(msg, dest)
+          filed_ids << msg['id'] if msg['id']
+          count += 1
+        rescue => e
+          failed += 1
+        end
       end
 
       # Remove filed messages from current view (by id, works in both flat and threaded mode)
-      filed_ids = msgs.map { |m| m['id'] }.compact.to_set
       @filtered_messages.reject! { |m| m['id'] && filed_ids.include?(m['id']) }
       if @show_threaded
         @display_messages&.reject! { |m| m['id'] && filed_ids.include?(m['id']) }
@@ -4314,7 +4373,9 @@ module Heathrow
       @index = [@index, (@filtered_messages.size - 1)].min
       @index = 0 if @index < 0 || @filtered_messages.empty?
 
-      set_feedback("Moved #{count} message#{count > 1 ? 's' : ''} to #{dest}", 156, 2)
+      msg_text = "Moved #{count} message#{count > 1 ? 's' : ''} to #{dest}"
+      msg_text += " (#{failed} failed)" if failed > 0
+      set_feedback(msg_text, failed > 0 ? 208 : 156, 2)
       render_all
     end
 
