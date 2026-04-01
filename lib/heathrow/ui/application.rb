@@ -5621,9 +5621,9 @@ module Heathrow
         @panes[:right].refresh
 
         if attachments.empty?
-          prompt = " Send (ENTER) | Edit (e) | Attach (a) | Postpone (p) | Cancel (ESC)"
+          prompt = " Send (ENTER) | Edit (e) | Attach (a) | Insight (d) | Postpone (p) | Cancel (ESC)"
         else
-          prompt = " Send (ENTER) | Edit (e) | More (a) | Clear (x) | Postpone (p) | ESC"
+          prompt = " Send (ENTER) | Edit (e) | More (a) | Insight (d) | Clear (x) | Postpone (p) | ESC"
         end
 
         @panes[:bottom].text = prompt.fg(226)
@@ -5642,6 +5642,9 @@ module Heathrow
         when 'a', 'A'
           new_files = run_rtfm_picker
           attachments.concat(new_files) if new_files && !new_files.empty?
+        when 'd', 'D'
+          new_files = run_insight_picker
+          attachments.concat(new_files) if new_files && !new_files.empty?
         when 'x', 'X'
           attachments.clear
         end
@@ -5658,6 +5661,36 @@ module Heathrow
       Cursor.show
 
       system("rtfm --pick=#{Shellwords.escape(pick_file)}")
+
+      # Restore raw mode and redraw UI
+      $stdin.raw!
+      $stdin.echo = false
+      Cursor.hide
+      Rcurses.clear_screen
+      setup_display
+      create_panes
+      render_all
+
+      if File.exist?(pick_file)
+        files = File.read(pick_file).lines.map(&:strip).reject(&:empty?)
+        File.delete(pick_file) rescue nil
+        files.select { |f| File.exist?(f) && File.file?(f) }
+      else
+        []
+      end
+    end
+
+    # Launch DualogInsight in picker mode, return array of selected file paths
+    def run_insight_picker
+      pick_file = "/tmp/insight_pick_#{Process.pid}.txt"
+      File.delete(pick_file) if File.exist?(pick_file)
+
+      # Restore terminal for DualogInsight CLI
+      system("stty sane 2>/dev/null")
+      Cursor.show
+
+      insight_dir = File.expand_path("~/Claude/Dualog/DualogInsight")
+      system("cd #{Shellwords.escape(insight_dir)} && venv/bin/python -m dualog_insight.cli --pick=#{Shellwords.escape(pick_file)}")
 
       # Restore raw mode and redraw UI
       $stdin.raw!
@@ -7892,19 +7925,72 @@ Required: URL, optional CSS selector
       if view && view[:filters] && view[:filters]['rules'].is_a?(Array)
         rule = view[:filters]['rules'].find { |r| r['field'] == 'source_type' && r['op'] == '=' }
         source_type = rule['value'] if rule
+        # Also check source_id rules to determine source type
+        if !source_type
+          sid_rule = view[:filters]['rules'].find { |r| r['field'] == 'source_id' && r['op'] == '=' }
+          if sid_rule
+            src = @db.get_source_by_id(sid_rule['value'].to_i)
+            source_type = src['plugin_type'] if src
+          end
+        end
       end
       folder = current_view_folder
 
       set_feedback("Syncing #{source_type || 'view'}...", 226, 30)
       @needs_redraw = true
 
+      # Extract thread info BEFORE spawning thread (current_message depends on UI state)
+      cur_msg = current_message
+      cur_meta = cur_msg && cur_msg['metadata']
+      cur_meta = JSON.parse(cur_meta) if cur_meta.is_a?(String) rescue nil
+      cur_thread_id = cur_meta['thread_id'] if cur_meta.is_a?(Hash)
+      # For thread headers, look for thread_id in section messages
+      if !cur_thread_id && cur_msg && cur_msg['section_messages']
+        first_msg = cur_msg['section_messages'].first
+        if first_msg
+          fm = first_msg['metadata']
+          fm = JSON.parse(fm) if fm.is_a?(String) rescue nil
+          cur_thread_id = fm['thread_id'] if fm.is_a?(Hash)
+        end
+      end
+      cur_thread_name = cur_msg['subject'] if cur_msg
+      File.open('/tmp/heathrow_sync_debug.log', 'w') { |f|
+        f.puts "source_type=#{source_type}"
+        f.puts "cur_msg_id=#{cur_msg&.[]('id')}"
+        f.puts "cur_msg_keys=#{cur_msg&.keys}"
+        f.puts "cur_meta_class=#{cur_meta.class}"
+        f.puts "cur_meta=#{cur_meta.inspect}"
+        f.puts "cur_thread_id=#{cur_thread_id}"
+        f.puts "cur_thread_name=#{cur_thread_name}"
+        f.puts "is_header=#{cur_msg&.[]('is_header')}"
+        f.puts "section_messages=#{cur_msg&.[]('section_messages')&.length}"
+      }
+
       Thread.new do
         thread_db = Heathrow::Database.new
+
         case source_type
         when 'maildir'   then sync_maildir(folder: folder, db: thread_db)
         when 'rss'       then sync_rss(db: thread_db)
         when 'web'       then sync_webwatch(db: thread_db)
-        when 'messenger' then sync_messenger(db: thread_db)
+        when 'messenger'
+          if cur_thread_id && cur_thread_name
+            require_relative '../sources/messenger'
+            src = thread_db.get_sources.find { |s| s['plugin_type'] == 'messenger' }
+            if src
+              config = src['config']
+              config = JSON.parse(config) if config.is_a?(String)
+              instance = Heathrow::Sources::Messenger.new(src['name'], config || {}, thread_db)
+              count = instance.sync_thread(src['id'], cur_thread_id.to_s, cur_thread_name)
+              if instance.sync_error
+                @last_sync_errors = (@last_sync_errors || []) << instance.sync_error
+              else
+                @_thread_sync_count = count
+              end
+            end
+          else
+            sync_messenger(db: thread_db)
+          end
         when 'instagram' then sync_instagram(db: thread_db)
         when 'weechat'   then sync_weechat(db: thread_db)
         else
@@ -7917,7 +8003,15 @@ Required: URL, optional CSS selector
         end
         thread_db.close rescue nil
         @pending_view_refresh = true
-        set_feedback("Synced", 46, 2)
+        if @last_sync_errors && !@last_sync_errors.empty?
+          set_feedback("Sync errors: #{@last_sync_errors.join('; ')}", 208, 0)
+          @last_sync_errors = nil
+        elsif @_thread_sync_count
+          set_feedback("Fetched #{@_thread_sync_count} messages from #{cur_thread_name}", @_thread_sync_count > 0 ? 156 : 208, 0)
+          @_thread_sync_count = nil
+        else
+          set_feedback("Synced", 46, 2)
+        end
       rescue => e
         set_feedback("Refresh error: #{e.message}", 196, 3)
       end
@@ -8596,14 +8690,18 @@ Required: URL, optional CSS selector
 
       require_relative '../sources/messenger'
       total = 0
+      errors = []
       sources.each do |source|
         config = source['config']
         config = JSON.parse(config) if config.is_a?(String)
         instance = Heathrow::Sources::Messenger.new(source['name'], config, db)
         total += (instance.sync(source['id']) || 0)
+        errors << instance.sync_error if instance.sync_error
       end
+      @last_sync_errors = (@last_sync_errors || []) + errors if errors.any?
       total > 0
     rescue => e
+      @last_sync_errors = (@last_sync_errors || []) << "Messenger: #{e.message}"
       File.open('/tmp/heathrow_debug.log', 'a') { |f| f.puts "Messenger sync error: #{e.message}\n#{e.backtrace.first(3).join("\n")}" }
       false
     end
