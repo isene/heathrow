@@ -5631,7 +5631,7 @@ module Heathrow
         if attachments.empty?
           prompt = " Send (ENTER) | Edit (e) | Attach (a)#{plugin_hint} | Postpone (p) | Cancel (ESC)"
         else
-          prompt = " Send (ENTER) | Edit (e) | More (a)#{plugin_hint} | Clear (x) | Postpone (p) | ESC"
+          prompt = " Send (ENTER) | Edit (e) | More (a)#{plugin_hint} | Remove (x) | Postpone (p) | ESC"
         end
 
         @panes[:bottom].text = prompt.fg(226)
@@ -5652,7 +5652,18 @@ module Heathrow
           new_files = run_rtfm_picker
           attachments.concat(new_files) if new_files && !new_files.empty?
         when 'x', 'X'
-          attachments.clear
+          if attachments.size == 1
+            attachments.clear
+          elsif attachments.size > 1
+            @panes[:bottom].text = " Remove which? (1-#{attachments.size}, or 'a' for all): ".fg(226)
+            @panes[:bottom].refresh
+            ans = getchr
+            if ans == 'a' || ans == 'A'
+              attachments.clear
+            elsif ans =~ /^\d$/ && (idx = ans.to_i) >= 1 && idx <= attachments.size
+              attachments.delete_at(idx - 1)
+            end
+          end
         else
           # Check compose plugins
           plugin = plugins.find { |p| p[:key] == chr }
