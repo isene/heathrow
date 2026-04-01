@@ -1503,9 +1503,9 @@ module Heathrow
       end
 
       @panes[:left].text = new_text
-      @panes[:left].refresh
+      @panes[:left].full_refresh
     end
-    
+
     def format_message_line(msg, selected)
       # Extract message details
       timestamp = (parse_timestamp(msg['timestamp']) || "").ljust(6)
@@ -5597,6 +5597,9 @@ module Heathrow
       end
 
       loop do
+        # Ensure terminal is in raw mode with cursor hidden (safety after external tools)
+        Cursor.hide
+
         # Show attachments and recipients in right pane
         right_lines = []
         if composed
@@ -5620,10 +5623,15 @@ module Heathrow
         @panes[:right].text = right_lines.join("\n")
         @panes[:right].refresh
 
+        # Build prompt with compose plugin keys
+        plugins = compose_plugins
+        plugin_hint = plugins.map { |p| "#{p[:label]} (#{p[:key]})" }.join(" | ")
+        plugin_hint = " | #{plugin_hint}" unless plugin_hint.empty?
+
         if attachments.empty?
-          prompt = " Send (ENTER) | Edit (e) | Attach (a) | Insight (d) | Postpone (p) | Cancel (ESC)"
+          prompt = " Send (ENTER) | Edit (e) | Attach (a)#{plugin_hint} | Postpone (p) | Cancel (ESC)"
         else
-          prompt = " Send (ENTER) | Edit (e) | More (a) | Insight (d) | Clear (x) | Postpone (p) | ESC"
+          prompt = " Send (ENTER) | Edit (e) | More (a)#{plugin_hint} | Clear (x) | Postpone (p) | ESC"
         end
 
         @panes[:bottom].text = prompt.fg(226)
@@ -5638,15 +5646,20 @@ module Heathrow
         when 'p'
           return :postpone
         when 'e'
+          composed[:attachments] = attachments.dup unless attachments.empty?
           return :edit
         when 'a', 'A'
           new_files = run_rtfm_picker
           attachments.concat(new_files) if new_files && !new_files.empty?
-        when 'd', 'D'
-          new_files = run_insight_picker
-          attachments.concat(new_files) if new_files && !new_files.empty?
         when 'x', 'X'
           attachments.clear
+        else
+          # Check compose plugins
+          plugin = plugins.find { |p| p[:key] == chr }
+          if plugin
+            new_files = run_compose_plugin(plugin)
+            attachments.concat(new_files) if new_files && !new_files.empty?
+          end
         end
       end
     end
@@ -5656,7 +5669,8 @@ module Heathrow
       pick_file = "/tmp/rtfm_pick_#{Process.pid}.txt"
       File.delete(pick_file) if File.exist?(pick_file)
 
-      # Restore terminal for RTFM
+      # Flush input, restore terminal for RTFM
+      $stdin.getc while $stdin.wait_readable(0)
       system("stty sane 2>/dev/null")
       Cursor.show
 
@@ -5680,19 +5694,41 @@ module Heathrow
       end
     end
 
-    # Launch DualogInsight in picker mode, return array of selected file paths
-    def run_insight_picker
-      pick_file = "/tmp/insight_pick_#{Process.pid}.txt"
+
+    # Compose plugins: loaded from ~/.heathrow/plugins/compose/*.rb
+    # Each plugin file should define a hash with :key, :label, :command
+    # Example: { key: 'i', label: 'Insight', command: 'cd ~/myapp && ./picker --pick=%{pick_file}' }
+    def compose_plugins
+      @_compose_plugins ||= begin
+        plugins = []
+        dir = File.join(Dir.home, '.heathrow', 'plugins', 'compose')
+        if Dir.exist?(dir)
+          Dir.glob(File.join(dir, '*.rb')).each do |f|
+            begin
+              plugin = eval(File.read(f))
+              plugins << plugin if plugin.is_a?(Hash) && plugin[:key] && plugin[:command]
+            rescue => e
+              File.open('/tmp/heathrow_debug.log', 'a') { |log| log.puts "Compose plugin error (#{f}): #{e.message}" }
+            end
+          end
+        end
+        plugins
+      end
+    end
+
+    def run_compose_plugin(plugin)
+      pick_file = "/tmp/heathrow_plugin_pick_#{Process.pid}.txt"
       File.delete(pick_file) if File.exist?(pick_file)
 
-      # Restore terminal for DualogInsight CLI
+      # Flush any queued input, restore terminal, clear screen
+      $stdin.getc while $stdin.wait_readable(0)
       system("stty sane 2>/dev/null")
       Cursor.show
+      print "\e[2J\e[H"  # Clear screen + home cursor
 
-      insight_dir = File.expand_path("~/Claude/Dualog/DualogInsight")
-      system("cd #{Shellwords.escape(insight_dir)} && venv/bin/python -m dualog_insight.cli --pick=#{Shellwords.escape(pick_file)}")
+      cmd = plugin[:command].gsub('%{pick_file}', Shellwords.escape(pick_file))
+      system(cmd)
 
-      # Restore raw mode and redraw UI
       $stdin.raw!
       $stdin.echo = false
       Cursor.hide
@@ -5720,12 +5756,13 @@ module Heathrow
       pending_attachments = Array(composed[:attachments]).dup
       loop do
         attachments = prompt_attachments(pending_attachments, composed: composed)
-        pending_attachments = []  # Only seed on first iteration
         case attachments
         when :postpone
           postpone_message(source, composed)
           return
         when :edit
+          # Preserve attachments across edit
+          pending_attachments = Array(composed[:attachments]).dup
           # Re-open editor with current composed data
           composer = MessageComposer.new(nil, identity: current_identity, address_book: @address_book, editor_args: @editor_args)
           re_composed = composer.compose_draft(composed.transform_keys(&:to_s))
@@ -5734,10 +5771,9 @@ module Heathrow
           render_all
           if re_composed
             composed = re_composed
-          else
-            set_feedback("Edit cancelled", 245, 1)
-            return
+            composed[:attachments] = pending_attachments unless pending_attachments.empty?
           end
+          # If unchanged (re_composed nil), just return to send prompt
         when nil
           set_feedback(cancel_label, 245, 1)
           return
