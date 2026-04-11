@@ -62,7 +62,7 @@ module Heathrow
       loop do
         # Render list with arrow marker
         lines = []
-        lines << "ADD SOURCE".b.fg(226)
+        lines << "ADD SOURCE".bd.fg(226)
         lines << ""
 
         keys.each_with_index do |key, i|
@@ -72,7 +72,7 @@ module Heathrow
           desc_line = "    #{info[:description]}"
 
           if i == selected
-            lines << name_line.b.fg(39)
+            lines << name_line.bd.fg(39)
             lines << desc_line.fg(245)
           else
             lines << name_line.fg(250)
@@ -111,7 +111,7 @@ module Heathrow
 
       @panes[:right].clear
       @panes[:right].text = [
-        "WEB PAGE MONITOR SETUP".b.fg(226),
+        "WEB PAGE MONITOR SETUP".bd.fg(226),
         "",
         "Add pages to monitor for changes.",
         "Each page is checked on refresh (C-R).",
@@ -165,7 +165,7 @@ module Heathrow
 
       @panes[:right].clear
       @panes[:right].text = [
-        "RSS/ATOM FEED SETUP".b.fg(226),
+        "RSS/ATOM FEED SETUP".bd.fg(226),
         "",
         "Add feeds one at a time.",
         "Leave URL empty when done.",
@@ -214,17 +214,17 @@ module Heathrow
         [
           "This connects to Messenger using your browser session.",
           "",
-          "HOW IT WORKS:".b.fg(39),
+          "HOW IT WORKS:".bd.fg(39),
           "  Heathrow reads your Firefox cookies to authenticate",
           "  with messenger.com — no password needed, no extra app.",
           "",
-          "IMPORTANT:".b.fg(196),
+          "IMPORTANT:".bd.fg(196),
           "  - Cookies expire when you log out of Facebook",
           "  - Sessions typically last 30-90 days",
           "  - If messages stop appearing, refresh cookies",
           "  - To refresh: press S → select Messenger → e → r",
           "",
-          "PRIVACY:".b.fg(226),
+          "PRIVACY:".bd.fg(226),
           "  Cookies are stored locally in ~/.heathrow/cookies/",
           "  with restricted permissions (owner-only read/write).",
           "  They never leave your machine.",
@@ -243,17 +243,17 @@ module Heathrow
         [
           "This connects to Instagram DMs using your browser session.",
           "",
-          "HOW IT WORKS:".b.fg(39),
+          "HOW IT WORKS:".bd.fg(39),
           "  Heathrow reads your Firefox cookies to authenticate",
           "  with instagram.com — no password needed, no extra app.",
           "",
-          "IMPORTANT:".b.fg(196),
+          "IMPORTANT:".bd.fg(196),
           "  - Cookies expire when you log out of Instagram",
           "  - Sessions typically last 30-90 days",
           "  - If messages stop appearing, refresh cookies",
           "  - Two-factor auth stays active — this is read-only",
           "",
-          "PRIVACY:".b.fg(226),
+          "PRIVACY:".bd.fg(226),
           "  Cookies are stored locally in ~/.heathrow/cookies/",
           "  with restricted permissions (owner-only read/write).",
         ]
@@ -264,13 +264,13 @@ module Heathrow
     def configure_weechat
       @panes[:right].clear
       @panes[:right].text = [
-        "WEECHAT RELAY SETUP".b.fg(226),
+        "WEECHAT RELAY SETUP".bd.fg(226),
         "",
         "Connect to a running WeeChat instance via",
         "its relay protocol to read IRC, Slack, and",
         "other chat buffers.",
         "",
-        "PREREQUISITES:".b.fg(39),
+        "PREREQUISITES:".bd.fg(39),
         "  WeeChat must have a relay enabled:",
         "  /relay add weechat 8001",
         "  /set relay.network.password \"yourpassword\"",
@@ -278,7 +278,7 @@ module Heathrow
         "For remote servers, use an SSH tunnel:",
         "  ssh -L 8001:localhost:8001 user@host",
         "",
-        "BUFFER FILTER:".b.fg(39),
+        "BUFFER FILTER:".bd.fg(39),
         "  Comma-separated glob patterns to select",
         "  which buffers to import:",
         "  irc.*           - all IRC",
@@ -343,7 +343,7 @@ module Heathrow
     def configure_meta_source(title, source_type, domain, required_cookies, optional_cookies, help_lines)
       @panes[:right].clear
       @panes[:right].text = ([
-        "#{title} SETUP".b.fg(226),
+        "#{title} SETUP".bd.fg(226),
         "",
       ] + help_lines).join("\n")
       @panes[:right].refresh
@@ -373,11 +373,11 @@ module Heathrow
         # Not found — ask user to log in and retry
         @panes[:right].clear
         @panes[:right].text = ([
-          "#{title} SETUP".b.fg(226),
+          "#{title} SETUP".bd.fg(226),
           "",
         ] + help_lines + [
           "",
-          "NEXT STEP:".b.fg(39),
+          "NEXT STEP:".bd.fg(39),
           "  1. Open #{domain} in Firefox and log in",
           "  2. Come back here and press Enter to retry",
           "",
@@ -414,13 +414,13 @@ module Heathrow
       config = {}
 
       form_text = []
-      form_text << "CONFIGURE #{source_info[:name].upcase}".b.fg(226)
+      form_text << "CONFIGURE #{source_info[:name].upcase}".bd.fg(226)
       form_text << ""
       form_text << source_info[:description]
       form_text << ""
 
       source_info[:fields].each do |field|
-        form_text << "#{field[:label]}:".b.fg(39)
+        form_text << "#{field[:label]}:".bd.fg(39)
         form_text << "  #{field[:help]}".fg(240) if field[:help]
 
         @panes[:right].clear

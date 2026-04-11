@@ -78,8 +78,6 @@ for (const link of links) {
 return results;
 """
 
-
-
 def main():
     try:
         from marionette_driver.marionette import Marionette
@@ -109,8 +107,10 @@ def main():
 
         threads = []
         for thread in thread_list[:MAX_THREADS]:
+            tid = thread['id']
             snippet = thread.get('snippet', '')
             debug(f"  {thread['name']}: snippet={snippet[:50] if snippet else '(none)'}, unread={thread.get('unread')}")
+
             threads.append({
                 "id": thread['id'],
                 "name": thread['name'],

@@ -10,6 +10,7 @@ module Heathrow
       COOKIE_DIR = File.join(Dir.home, '.heathrow', 'cookies')
       COOKIE_FILE = File.join(COOKIE_DIR, 'messenger.json')
       FETCH_SCRIPT = File.join(__dir__, 'messenger_fetch_marionette.py')
+      THREAD_SCRIPT = File.join(__dir__, 'messenger_fetch_thread.py')
 
       # Required cookies for authentication
       REQUIRED_COOKIES = %w[c_user xs]
@@ -21,23 +22,104 @@ module Heathrow
       end
 
       def sync(source_id)
-        return 0 unless valid_cookies?
+        unless valid_cookies?
+          @sync_error = "Messenger: invalid cookies"
+          return 0
+        end
 
         begin
           data = fetch_via_playwright
-          return 0 unless data
+          unless data
+            @sync_error = "Messenger: no data (is the tab open?)"
+            return 0
+          end
+
+          if data['error']
+            @sync_error = "Messenger: #{data['error']}"
+            return 0
+          end
+
           threads = data['threads'] || []
-          return 0 if threads.empty?
+          if threads.empty?
+            @sync_error = "Messenger: no threads found"
+            return 0
+          end
 
           count = 0
           threads.each do |thread|
             count += process_thread(source_id, thread)
           end
+          @sync_error = nil
           count
         rescue => e
-          STDERR.puts "Messenger error: #{e.message}" if ENV['DEBUG']
+          @sync_error = "Messenger: #{e.message}"
           0
         end
+      end
+
+      attr_reader :sync_error
+
+      # Deep-fetch a single thread: navigate into it and scrape visible messages
+      def sync_thread(source_id, thread_id, thread_name)
+        result = `timeout 15 python3 #{Shellwords.escape(THREAD_SCRIPT)} #{Shellwords.escape(thread_id)} 2>/dev/null`
+        return 0 if result.nil? || result.strip.empty?
+
+        data = JSON.parse(result)
+        if data['error']
+          @sync_error = "Messenger thread: #{data['error']}"
+          return 0
+        end
+
+        messages = data['messages'] || []
+        return 0 if messages.empty?
+
+        count = 0
+        messages.each_with_index do |msg, i|
+          text = (msg['text'] || '').strip
+          next if text.empty? || text.length < 2
+          # Skip UI garbage
+          next if text =~ /^(Today|Yesterday) at \d/i
+          next if text =~ /^Enter, Message sent/i
+          next if text =~ /^You (sent|replied|reacted)/i
+
+          sender = msg['sender'] || ''
+          sender = thread_name if sender.empty?
+
+          ext_id = "msng_#{thread_id}_d#{Digest::MD5.hexdigest(text)[0..11]}"
+
+          msg_data = {
+            source_id: source_id,
+            external_id: ext_id,
+            thread_id: thread_id.to_s,
+            sender: sender,
+            sender_name: sender,
+            recipients: [thread_name],
+            subject: thread_name,
+            content: text,
+            html_content: nil,
+            timestamp: Time.now.to_i,
+            received_at: Time.now.to_i,
+            read: true,
+            starred: false,
+            archived: false,
+            labels: ['Messenger'],
+            attachments: nil,
+            metadata: { thread_id: thread_id, message_id: ext_id, platform: 'messenger' },
+            raw_data: { thread_id: thread_id, name: thread_name }
+          }
+
+          begin
+            @db.insert_message(msg_data)
+            count += 1
+          rescue SQLite3::ConstraintException
+            # Already exists
+          end
+        end
+        @sync_error = nil
+        count
+      rescue => e
+        @sync_error = "Messenger thread: #{e.message}"
+        0
       end
 
       def fetch
@@ -124,7 +206,7 @@ module Heathrow
 
       def fetch_via_playwright
         # Use Marionette (real Firefox tab) since Meta blocks headless browsers
-        result = `python3 #{Shellwords.escape(FETCH_SCRIPT)} 2>/dev/null`
+        result = `timeout 30 python3 #{Shellwords.escape(FETCH_SCRIPT)} 2>/dev/null`
         return nil if result.nil? || result.strip.empty?
 
         data = JSON.parse(result)

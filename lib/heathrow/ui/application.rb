@@ -1037,10 +1037,10 @@ module Heathrow
       idx = 0
 
       render_pick = -> {
-        lines = [title.b.fg(226), ""]
+        lines = [title.bd.fg(226), ""]
         names.each_with_index do |name, i|
           if i == idx
-            lines << "→ #{name}".b.fg(226)
+            lines << "→ #{name}".bd.fg(226)
           else
             lines << "  #{name}".fg(252)
           end
@@ -1392,7 +1392,7 @@ module Heathrow
       
       # Build colored components
       title_part = " Heathrow - ".fg(248)
-      view_part = view_name.b.fg(255)
+      view_part = view_name.bd.fg(255)
 
       # Add sort order info (only for message views, not Sources)
       sort_part = ""
@@ -1597,7 +1597,7 @@ module Heathrow
 
       if selected
         content = "#{name} #{poll_col} #{count_col}"
-        health + " " + content.b.u.fg(src_color) + padding
+        health + " " + content.bd.ul.fg(src_color) + padding
       elsif msg['enabled'].to_i == 0
         health + " " + line.fg(240)
       else
@@ -1744,7 +1744,7 @@ module Heathrow
       
       # Show edit options in right pane
       options = []
-      options << "EDIT SOURCE: #{source['name']}".b.fg(226)
+      options << "EDIT SOURCE: #{source['name']}".bd.fg(226)
       options << "=" * 40
       options << ""
       options << "What would you like to edit?"
@@ -1974,7 +1974,7 @@ module Heathrow
       
       # Special handling for RSS/HN messages
       if msg['source_type'] == 'rss' || msg['source_type'] == 'hacker_news'
-        header << "📰 #{msg['subject']}".b.fg(226) if msg['subject']
+        header << "📰 #{msg['subject']}".bd.fg(226) if msg['subject']
         
         # Extract metadata from raw_data if available
         if msg['raw_data']
@@ -2020,9 +2020,9 @@ module Heathrow
         # For weechat, show channel name from metadata instead of content preview
         meta = msg['metadata']
         if meta.is_a?(Hash) && meta['channel_name']
-          header << "Subject: #{meta['channel_name']}".b.fg(1)
+          header << "Subject: #{meta['channel_name']}".bd.fg(1)
         elsif msg['subject']
-          header << "Subject: #{msg['subject']}".b.fg(1)
+          header << "Subject: #{msg['subject']}".bd.fg(1)
         end
       end
       
@@ -2068,7 +2068,7 @@ module Heathrow
       # For RSS/HN, add extra formatting and info
       if msg['source_type'] == 'rss' || msg['source_type'] == 'hacker_news'
         content_parts = []
-        content_parts << "📄 Article Summary:".b.fg(226)
+        content_parts << "📄 Article Summary:".bd.fg(226)
         content_parts << ""
         
         # Word wrap the content for better readability
@@ -2107,7 +2107,7 @@ module Heathrow
         # Add helpful instructions
         content_parts << ""
         content_parts << "─" * 40
-        content_parts << "💡 Keyboard Shortcuts:".b.fg(156)
+        content_parts << "💡 Keyboard Shortcuts:".bd.fg(156)
         content_parts << ""
         content_parts << "  x     - Open full article in browser".fg(250)
         content_parts << "  SPACE - Toggle read/unread status".fg(250)
@@ -2177,7 +2177,7 @@ module Heathrow
 
       # Title
       title = header_msg['subject'] || header_msg['channel_name'] || 'Group'
-      lines << title.b.fg(226)
+      lines << title.bd.fg(226)
       lines << ""
 
       # Message count
@@ -3302,14 +3302,14 @@ module Heathrow
     end
 
     def render_attachment_list(attachments, idx, tagged)
-      lines = ["Attachments:".b.fg(226), ""]
+      lines = ["Attachments:".bd.fg(226), ""]
       attachments.each_with_index do |att, i|
         name = att['name'] || att['filename'] || 'unnamed'
         size = att['size'] ? " (#{human_size(att['size'])})" : ''
         ctype = att['content_type']&.split(';')&.first || ''
         tag = tagged.include?(i) ? "* ".fg(226) : "  "
         if i == idx
-          lines << "→ ".fg(226) + tag + "#{name}#{size}  #{ctype}".b.fg(255)
+          lines << "→ ".fg(226) + tag + "#{name}#{size}  #{ctype}".bd.fg(255)
         else
           lines << "  " + tag + "#{name}#{size}  #{ctype}".fg(250)
         end
@@ -3882,7 +3882,7 @@ module Heathrow
         star = @browser_favorites.include?(folder[:full_name]) ? "* ".fg(226) : "  "
 
         if i == @folder_browser_index
-          line = "→ ".fg(226) + indent + arrow.fg(226) + star + folder[:name].b.u.fg(255)
+          line = "→ ".fg(226) + indent + arrow.fg(226) + star + folder[:name].bd.ul.fg(255)
         else
           line = "  " + indent + arrow.fg(245) + star + folder[:name].fg(245)
         end
@@ -3914,7 +3914,7 @@ module Heathrow
         @folder_count_cache ||= {}
         counts = @folder_count_cache[folder[:full_name]] ||= folder_message_count(folder[:full_name])
         info = []
-        info << "FOLDER: #{folder[:full_name]}".b.fg(226)
+        info << "FOLDER: #{folder[:full_name]}".bd.fg(226)
         info << ""
         info << "Messages: #{counts[:total]}".fg(39)
         info << "Unread: #{counts[:unread]}".fg(counts[:unread] > 0 ? 208 : 245)
@@ -3929,7 +3929,7 @@ module Heathrow
       # Update top bar (preserve Favorites title if in favorites mode)
       browser_title = @in_favorites_browser ? "Favorites" : "Folder Browser"
       browser_color = @in_favorites_browser ? 226 : 201
-      @panes[:top].text = " Heathrow - ".b.fg(255) + browser_title.b.fg(browser_color) + " [#{@folder_display.size} folders]".fg(246)
+      @panes[:top].text = " Heathrow - ".bd.fg(255) + browser_title.bd.fg(browser_color) + " [#{@folder_display.size} folders]".fg(246)
       @panes[:top].refresh
 
       # Update bottom bar
@@ -3946,7 +3946,7 @@ module Heathrow
         arrow = folder[:has_children] ? (folder[:collapsed] ? "▸ " : "▾ ") : "  "
         star = @browser_favorites.include?(folder[:full_name]) ? "* ".fg(226) : "  "
         if i == @folder_browser_index
-          line = "→ ".fg(226) + indent + arrow.fg(226) + star + folder[:name].b.u.fg(255)
+          line = "→ ".fg(226) + indent + arrow.fg(226) + star + folder[:name].bd.ul.fg(255)
         else
           line = "  " + indent + arrow.fg(245) + star + folder[:name].fg(245)
         end
@@ -4135,7 +4135,7 @@ module Heathrow
       end
 
       render_folder_browser
-      @panes[:top].text = " Heathrow - ".b.fg(255) + "Favorites".b.fg(226) + " [#{favorites.size} folders]".fg(246)
+      @panes[:top].text = " Heathrow - ".bd.fg(255) + "Favorites".bd.fg(226) + " [#{favorites.size} folders]".fg(246)
       @panes[:top].refresh
       @panes[:bottom].text = " j/k:Navigate | Enter:Open | C-Up/C-Down:Reorder | B:All folders | +:Remove fav | ESC:Back".fg(245)
       @panes[:bottom].refresh
@@ -4174,7 +4174,7 @@ module Heathrow
               @folder_browser_index = 0 if @folder_browser_index < 0
               set_feedback("Removed #{folder[:full_name]} from favorites", 226, 2)
               render_folder_browser
-              @panes[:top].text = " Heathrow - ".b.fg(255) + "Favorites".b.fg(226) + " [#{@folder_display.size} folders]".fg(246)
+              @panes[:top].text = " Heathrow - ".bd.fg(255) + "Favorites".bd.fg(226) + " [#{@folder_display.size} folders]".fg(246)
               @panes[:top].refresh
             end
           end
@@ -4234,7 +4234,7 @@ module Heathrow
       shortcuts = get_folder_shortcuts
       # Show shortcuts in right pane
       info = []
-      info << "FOLDER SHORTCUTS".b.fg(226)
+      info << "FOLDER SHORTCUTS".bd.fg(226)
       info << "Press a key to jump to folder:".fg(245)
       info << ""
       shortcuts.sort_by { |k, _| k }.each do |key, folder|
@@ -4518,7 +4518,7 @@ module Heathrow
         indent = "  " * folder[:depth]
         arrow = folder[:has_children] ? (folder[:collapsed] ? "▸ " : "▾ ") : "  "
         if i == idx
-          "→ ".fg(226) + indent + arrow.fg(226) + folder[:name].b.u.fg(255)
+          "→ ".fg(226) + indent + arrow.fg(226) + folder[:name].bd.ul.fg(255)
         else
           "  " + indent + arrow.fg(245) + folder[:name].fg(245)
         end
@@ -4541,7 +4541,7 @@ module Heathrow
       end
       @panes[:left].refresh
 
-      @panes[:top].text = " Heathrow - ".b.fg(255) + title.b.fg(226)
+      @panes[:top].text = " Heathrow - ".bd.fg(255) + title.bd.fg(226)
       @panes[:top].refresh
       @panes[:bottom].text = " j/k:Navigate | Enter:Save here | h/l:Collapse/Expand | ESC:Cancel".fg(245)
       @panes[:bottom].refresh
@@ -4555,7 +4555,7 @@ module Heathrow
       loop do
         # Display current shortcuts in right pane
         info = []
-        info << "SAVE FOLDER SHORTCUTS".b.fg(226)
+        info << "SAVE FOLDER SHORTCUTS".bd.fg(226)
         info << ""
         if shortcuts.empty?
           info << "No shortcuts configured".fg(245)
@@ -4670,7 +4670,7 @@ module Heathrow
         return
       end
 
-      lines = ["LABELS IN USE".b.fg(226), ""]
+      lines = ["LABELS IN USE".bd.fg(226), ""]
       label_counts.sort_by { |_, c| -c }.each do |label, count|
         lines << "  #{label}".fg(51) + " (#{count})".fg(245)
       end
@@ -4782,7 +4782,7 @@ module Heathrow
 
     def ai_show_response(title, response)
       lines = []
-      lines << title.b.fg(226)
+      lines << title.bd.fg(226)
       lines << ""
       lines << response
       @panes[:right].ix = 0
@@ -4899,7 +4899,7 @@ module Heathrow
 
       # Show diff-like view
       lines = []
-      lines << "GRAMMAR/SPELLING FIX".b.fg(226)
+      lines << "GRAMMAR/SPELLING FIX".bd.fg(226)
       lines << ""
       lines << "Original:".fg(245)
       lines << msg['content'].to_s
@@ -5459,7 +5459,7 @@ module Heathrow
       idx = 0
       loop do
         ch = channels[idx]
-        @panes[:bottom].text = " New message via: #{ch[:name].b}  (TAB to cycle, ENTER to confirm, ESC to cancel)".fg(226)
+        @panes[:bottom].text = " New message via: #{ch[:name].bd}  (TAB to cycle, ENTER to confirm, ESC to cancel)".fg(226)
         @panes[:bottom].refresh
 
         key = getchr
@@ -5613,7 +5613,7 @@ module Heathrow
         else
           total_size = attachments.sum { |f| File.size(f) rescue 0 }
           size_str = total_size < 1_000_000 ? "#{(total_size / 1024.0).round(1)}KB" : "#{(total_size / 1_000_000.0).round(1)}MB"
-          right_lines << "Attachments (#{attachments.size}, #{size_str}):".b
+          right_lines << "Attachments (#{attachments.size}, #{size_str}):".bd
           attachments.each_with_index do |f, i|
             fsize = File.size(f) rescue 0
             fs = fsize < 1_000_000 ? "#{(fsize / 1024.0).round(1)}KB" : "#{(fsize / 1_000_000.0).round(1)}MB"
@@ -5839,7 +5839,7 @@ module Heathrow
 
       build = -> {
         popup.full_refresh
-        lines = ["", "  " + "Postponed Messages".b.fg(theme[:accent])]
+        lines = ["", "  " + "Postponed Messages".bd.fg(theme[:accent])]
         lines << "  " + "\u2500" * [pw - 6, 1].max
         drafts.each_with_index do |d, i|
           data = JSON.parse(d['data']) rescue {}
@@ -6059,7 +6059,7 @@ module Heathrow
         inner_w = pw - 4
         lines = []
         lines << ""
-        lines << "  " + "Settings".b.fg(theme[:accent])
+        lines << "  " + "Settings".bd.fg(theme[:accent])
         lines << "  " + "\u2500" * [inner_w - 3, 1].max
 
         settings_rows.each_with_index do |key, i|
@@ -6281,7 +6281,7 @@ module Heathrow
         lines = []
         title = theme_name ? "Edit: #{theme_name}" : "Theme Editor (#{@color_theme})"
         lines << ""
-        lines << "  " + title.b.fg(editing[:accent] || 10)
+        lines << "  " + title.bd.fg(editing[:accent] || 10)
         lines << "  " + "\u2500" * [inner_w - 3, 1].max
 
         # Ensure scroll follows selection
@@ -6753,13 +6753,13 @@ module Heathrow
           content = $2.chomp
           case level
           when 1
-            colored += content.b.fg(226) + "\n"  # Bright yellow bold for H1
+            colored += content.bd.fg(226) + "\n"  # Bright yellow bold for H1
           when 2
-            colored += content.b.fg(14) + "\n"   # Cyan bold for H2
+            colored += content.bd.fg(14) + "\n"   # Cyan bold for H2
           when 3
-            colored += content.b.fg(10) + "\n"   # Green bold for H3
+            colored += content.bd.fg(10) + "\n"   # Green bold for H3
           else
-            colored += content.b.fg(11) + "\n"   # Yellow bold for H4-H6
+            colored += content.bd.fg(11) + "\n"   # Yellow bold for H4-H6
           end
         when /^\s*[-*+]\s+(.+)$/  # Bullet points
           indent = line[/^\s*/]
@@ -6789,8 +6789,8 @@ module Heathrow
           processed = line.dup
           
           # Bold text **text** or __text__
-          processed.gsub!(/\*\*(.+?)\*\*/, '\1'.b)
-          processed.gsub!(/__(.+?)__/, '\1'.b)
+          processed.gsub!(/\*\*(.+?)\*\*/, '\1'.bd)
+          processed.gsub!(/__(.+?)__/, '\1'.bd)
           
           # Italic text *text* or _text_
           processed.gsub!(/\*([^*]+)\*/, '\1'.fg(252))
@@ -6813,14 +6813,14 @@ module Heathrow
     
     def get_extended_help_text
       <<~HELP
-#{"HEATHROW - COMPREHENSIVE DOCUMENTATION".b.fg(226)}
+#{"HEATHROW - COMPREHENSIVE DOCUMENTATION".bd.fg(226)}
 #{"=" * 60}
 
 Heathrow is a unified terminal interface for all your communication sources.
 It aggregates messages from email, WhatsApp, Telegram, Discord, Reddit, 
 RSS feeds, and more into a single, keyboard-driven interface.
 
-#{"KEYBOARD SHORTCUTS".b.fg(theme[:accent])}
+#{"KEYBOARD SHORTCUTS".bd.fg(theme[:accent])}
 
 #{"Navigation".fg(11)}
       j/↓        Move down in message list
@@ -6881,7 +6881,7 @@ RSS feeds, and more into a single, keyboard-driven interface.
                    t = Translate message
                    a = Ask anything about the message
 
-#{"FILTER SYNTAX".b.fg(theme[:accent])}
+#{"FILTER SYNTAX".bd.fg(theme[:accent])}
       
       Filters support powerful pattern matching:
       - Comma (,) = AND condition - all must match
@@ -6893,7 +6893,7 @@ RSS feeds, and more into a single, keyboard-driven interface.
       - "critical,production" = matches critical AND production
       - "error|warning,production" = (error OR warning) AND production
       
-#{"SOURCE TYPES".b.fg(theme[:accent])}
+#{"SOURCE TYPES".bd.fg(theme[:accent])}
       
 #{"Email (IMAP)".fg(39)}
 Connect to any IMAP email server. Supports Gmail, Outlook, Yahoo, etc.
@@ -6923,7 +6923,7 @@ Required: Client ID, client secret
 Monitor web pages for changes.
 Required: URL, optional CSS selector
       
-#{"CONFIGURATION".b.fg(theme[:accent])}
+#{"CONFIGURATION".bd.fg(theme[:accent])}
       
       Config file: ~/.heathrow/config.yml
       Database: ~/.heathrow/heathrow.db
@@ -6934,7 +6934,7 @@ Required: URL, optional CSS selector
       - Notification settings
       - Custom key bindings
       
-#{"TIPS & TRICKS".b.fg(theme[:accent])}
+#{"TIPS & TRICKS".bd.fg(theme[:accent])}
       
       1. Use numbered views (0-9) to organize messages by topic
       2. Combine source filters with content patterns for precision
@@ -6948,16 +6948,16 @@ Required: URL, optional CSS selector
     
     def get_help_text
       <<~HELP
- #{"HEATHROW - Communication Hub In The Terminal".b.fg(226)}
+ #{"HEATHROW - Communication Hub In The Terminal".bd.fg(226)}
  
- #{"BASIC KEYS".b.fg(theme[:accent])}
+ #{"BASIC KEYS".bd.fg(theme[:accent])}
    #{"?".fg(10)}       = Show this help text (press again for extended help)
    #{"q".fg(10)}       = Quit Heathrow
    #{"Q".fg(10)}       = QUIT (force quit without saving state)
    #{"Ctrl-r".fg(10)}   = Refresh current view (sync + reload)
    #{"Ctrl-l".fg(10)}   = Redraw panes (no fetch)
    
- #{"NAVIGATION".b.fg(theme[:accent])}
+ #{"NAVIGATION".bd.fg(theme[:accent])}
    #{"j/↓".fg(10)}     = Move down in message list (rounds to top)
    #{"k/↑".fg(10)}     = Move up in message list (rounds to bottom)
    #{"h/←".fg(10)}     = Go back / parent view
@@ -6968,7 +6968,7 @@ Required: URL, optional CSS selector
    #{"End".fg(10)}     = Go to last message
    #{"J".fg(10)}       = Jump to date (yyyy-mm-dd)
    
- #{"RIGHT PANE SCROLLING".b.fg(theme[:accent])}
+ #{"RIGHT PANE SCROLLING".bd.fg(theme[:accent])}
    #{"S-↓".fg(10)}     = Scroll content down one line
    #{"S-↑".fg(10)}     = Scroll content up one line
    #{"S-PgDn".fg(10)}  = Scroll content down one page
@@ -6977,7 +6977,7 @@ Required: URL, optional CSS selector
    #{"S-LEFT".fg(10)}  = Scroll content up one page
    #{"TAB".fg(10)}     = Scroll content down one page
  
- #{"VIEWS & FILTERS".b.fg(theme[:accent])}
+ #{"VIEWS & FILTERS".bd.fg(theme[:accent])}
    #{"A".fg(10)}       = Show all messages
    #{"N".fg(10)}       = Show new (unread) messages only
    #{"S".fg(10)}       = Sources configuration and management
@@ -6986,7 +6986,7 @@ Required: URL, optional CSS selector
    #{"Ctrl-f".fg(10)}  = Edit/create filter for current view (0-9, F1-F12)
    #{"K".fg(10)}       = Kill/delete a view (with confirmation)
  
- #{"MESSAGE ACTIONS".b.fg(theme[:accent])}
+ #{"MESSAGE ACTIONS".bd.fg(theme[:accent])}
    #{"R".fg(10)}       = Toggle read/unread status
    #{"M".fg(10)}       = Mark all messages in view as read
    #{"Space".fg(10)}   = Collapse/expand thread (threaded view)
@@ -7009,14 +7009,14 @@ Required: URL, optional CSS selector
    #{"m".fg(10)}       = Mail/compose new message
    #{"y".fg(10)}       = Copy message ID to clipboard (for CC sessions)
    
- #{"SOURCE MANAGEMENT".b.fg(theme[:accent])} (in Sources view with 'S')
+ #{"SOURCE MANAGEMENT".bd.fg(theme[:accent])} (in Sources view with 'S')
    #{"a".fg(10)}       = Add new source
    #{"e".fg(10)}       = Edit selected source
    #{"d".fg(10)}       = Delete selected source
    #{"Enter".fg(10)}   = Show all messages from selected source
    #{"Space".fg(10)}   = Enable/disable source
  
- #{"FOLDER NAVIGATION".b.fg(theme[:accent])}
+ #{"FOLDER NAVIGATION".bd.fg(theme[:accent])}
    #{"B".fg(10)}       = Browse all folders (folder tree)
    #{"F".fg(10)}       = Browse favorite folders
    #{"+".fg(10)}       = Add/remove current folder from favorites
@@ -7029,7 +7029,7 @@ Required: URL, optional CSS selector
    #{"l".fg(10)}       = Add/remove labels (+label / -label / ? to list)
    #{"/".fg(10)}       = Full-text search (notmuch)
 
- #{"AI ASSISTANT".b.fg(theme[:accent])}
+ #{"AI ASSISTANT".bd.fg(theme[:accent])}
    #{"I".fg(10)}       = AI assistant (Claude Code integration)
    #{"  d".fg(10)}     = Draft a reply
    #{"  f".fg(10)}     = Fix grammar/spelling
@@ -7037,7 +7037,7 @@ Required: URL, optional CSS selector
    #{"  t".fg(10)}     = Translate message
    #{"  a".fg(10)}     = Ask anything about the message
 
- #{"UI CONTROLS".b.fg(theme[:accent])}
+ #{"UI CONTROLS".bd.fg(theme[:accent])}
    #{"w".fg(10)}       = Change left pane width (20% → 60%)
    #{"Ctrl-b".fg(10)}  = Cycle border style (none/single/double)
    #{"D".fg(10)}       = Cycle date/time format
@@ -7056,7 +7056,7 @@ Required: URL, optional CSS selector
       bindings = @config.custom_bindings
       return "" if bindings.empty?
 
-      lines = ["\n #{" CUSTOM BINDINGS".b.fg(theme[:accent])}"]
+      lines = ["\n #{" CUSTOM BINDINGS".bd.fg(theme[:accent])}"]
       bindings.each do |key, b|
         desc = b[:description] || b[:shell] || b[:action].to_s
         lines << "   #{key.fg(10).ljust(16)}= #{desc}"
@@ -7066,7 +7066,7 @@ Required: URL, optional CSS selector
 
     def render_sources_info
       source_text = []
-      source_text << "SOURCE MANAGEMENT".b.fg(226)
+      source_text << "SOURCE MANAGEMENT".bd.fg(226)
       source_text << "=" * 40
       source_text << ""
       
@@ -7075,7 +7075,7 @@ Required: URL, optional CSS selector
         source_text << ""
         source_text << "Press 'a' to add a new source"
         source_text << ""
-        source_text << "Available source types:".b.fg(39)
+        source_text << "Available source types:".bd.fg(39)
         types = @source_manager.get_source_types
         types.each do |key, info|
           source_text << "• #{info[:icon]} #{info[:name]}".fg(226)
@@ -7086,7 +7086,7 @@ Required: URL, optional CSS selector
         if selected
           source = @source_manager.sources[selected['id']]
           if source
-            source_text << "Selected: #{source['name']}".b.fg(39)
+            source_text << "Selected: #{source['name']}".bd.fg(39)
             source_text << "Type: #{source['plugin_type'] || source['type']}".fg(245)
             source_text << "Status: #{source['enabled'] ? 'Enabled' : 'Disabled'}".fg(source['enabled'] ? 40 : 196)
             interval = (source['poll_interval'] || 900).to_i
@@ -7122,7 +7122,7 @@ Required: URL, optional CSS selector
               item_name = stype == 'rss' ? 'feed' : 'page'
               items = config[stype == 'rss' ? 'feeds' : 'pages'] || []
               unless items.empty?
-                source_text << "#{items.size} #{item_name}s:".b.fg(245)
+                source_text << "#{items.size} #{item_name}s:".bd.fg(245)
                 items.each_with_index do |item, i|
                   name = item['title'] || item['url'] || item['name'] || "Item #{i}"
                   status = item['last_status']
@@ -7142,14 +7142,14 @@ Required: URL, optional CSS selector
               end
 
               # Context-sensitive actions
-              source_text << "ACTIONS".b.fg(226)
+              source_text << "ACTIONS".bd.fg(226)
               source_text << "-" * 40
               source_text << "a - Add #{item_name}"
               source_text << "d - Remove #{item_name}"
               source_text << "e - Edit source settings"
             else
               # Show config (hide secrets)
-              source_text << "Configuration:".b.fg(39)
+              source_text << "Configuration:".bd.fg(39)
               config.each do |key, value|
                 next if key.to_s =~ /password|secret|token/
                 source_text << "  #{key}: #{value}".fg(245)
@@ -7157,7 +7157,7 @@ Required: URL, optional CSS selector
               source_text << ""
 
               # Context-sensitive actions
-              source_text << "ACTIONS".b.fg(226)
+              source_text << "ACTIONS".bd.fg(226)
               source_text << "-" * 40
               source_text << "a - Add new source"
               source_text << "e - Edit this source"
@@ -7184,7 +7184,7 @@ Required: URL, optional CSS selector
 
       # Build a 256-color grid in the right pane
       lines = []
-      lines << "COLOR PICKER for #{source['name']}".b.fg(226)
+      lines << "COLOR PICKER for #{source['name']}".bd.fg(226)
       lines << "=" * 40
       lines << ""
       lines << "Enter color number (0-255) or RGB hex (e.g. ff8800):"
@@ -7406,7 +7406,7 @@ Required: URL, optional CSS selector
       end
 
       lines = []
-      lines << "POLL INTERVAL for #{source['name']}".b.fg(226)
+      lines << "POLL INTERVAL for #{source['name']}".bd.fg(226)
       lines << "=" * 40
       lines << ""
       lines << "Current: #{current_str}".fg(245)
@@ -7478,14 +7478,14 @@ Required: URL, optional CSS selector
 
     def show_filter_details(view_num, view_config)
       filter_text = []
-      filter_text << "VIEW #{view_num} CONFIGURATION".b.fg(226)
+      filter_text << "VIEW #{view_num} CONFIGURATION".bd.fg(226)
       filter_text << "=" * 40
       filter_text << ""
       
       if view_config[:filters] && !view_config[:filters].empty?
-        filter_text << "Name:".b.fg(39) + " #{view_config[:name] || 'View ' + view_num.to_s}"
+        filter_text << "Name:".bd.fg(39) + " #{view_config[:name] || 'View ' + view_num.to_s}"
         filter_text << ""
-        filter_text << "Active Filters:".b.fg(39)
+        filter_text << "Active Filters:".bd.fg(39)
         filter_text << "-" * 20
         
         filters = view_config[:filters]
@@ -7536,14 +7536,14 @@ Required: URL, optional CSS selector
         filter_text << ""
         filter_text << "-" * 40
         filter_text << ""
-        filter_text << "Matching Messages:".b.fg(39) + " #{@filtered_messages.size}"
+        filter_text << "Matching Messages:".bd.fg(39) + " #{@filtered_messages.size}"
       else
         filter_text << "No filters configured".fg(245)
         filter_text << ""
         filter_text << "This view will show an empty list until"
         filter_text << "you configure filters."
         filter_text << ""
-        filter_text << "Available filter options:".b.fg(39)
+        filter_text << "Available filter options:".bd.fg(39)
         filter_text << "• Source types (email, whatsapp, etc.)"
         filter_text << "• Sender pattern (pipe | for OR)"
         filter_text << "• Subject pattern (pipe | for OR)"
@@ -7551,7 +7551,7 @@ Required: URL, optional CSS selector
         filter_text << "• Label (use 'l' to add labels, filter here)"
         filter_text << "• Read/unread status"
         filter_text << ""
-        filter_text << "Pattern Examples:".b.fg(39)
+        filter_text << "Pattern Examples:".bd.fg(39)
         filter_text << "Sender: Mom|Dad|Sister (any of them)"
         filter_text << "Content: error|warning,critical"
         filter_text << "  → (error OR warning) AND critical"
@@ -7770,7 +7770,7 @@ Required: URL, optional CSS selector
 
       welcome = []
       welcome << ""
-      welcome << "  " + "Welcome to Heathrow!".b.fg(226)
+      welcome << "  " + "Welcome to Heathrow!".bd.fg(226)
       welcome << "  " + "Where all your messages connect.".fg(245)
       welcome << ""
       welcome << "  " + "\u2500" * [pw - 6, 1].max
@@ -7778,7 +7778,7 @@ Required: URL, optional CSS selector
       welcome << "  No message sources configured yet."
       welcome << "  Let's get you started with your first source."
       welcome << ""
-      welcome << "  Available source types:".b.fg(39)
+      welcome << "  Available source types:".bd.fg(39)
       welcome << ""
       welcome << "  " + "1".fg(226) + " - Maildir (local email, works with offlineimap/mbsync/fetchmail)"
       welcome << "  " + "2".fg(226) + " - RSS/Atom feeds"
@@ -8443,7 +8443,7 @@ Required: URL, optional CSS selector
 
         # Format the event for display
         lines = []
-        lines << "Calendar Event".b.fg(226)
+        lines << "Calendar Event".bd.fg(226)
         lines << ""
         lines << "WHAT:  #{event[:summary]}".fg(156) if event[:summary]
         if event[:dates]
@@ -8567,7 +8567,7 @@ Required: URL, optional CSS selector
     def format_attachments(attachments)
       return nil unless attachments.is_a?(Array) && !attachments.empty?
       lines = []
-      lines << "Attachments:".b.fg(208)
+      lines << "Attachments:".bd.fg(208)
       attachments.each_with_index do |att, i|
         name = att['name'] || att['filename'] || 'unnamed'
         size = att['size'] ? " (#{human_size(att['size'])})" : ''
@@ -8605,7 +8605,7 @@ Required: URL, optional CSS selector
       result = ""
       parts.each_with_index do |part, i|
         result += base_color ? part.fg(base_color) : part
-        result += urls[i].u.fg(link_color) if urls[i]
+        result += urls[i].ul.fg(link_color) if urls[i]
       end
       result
     end

@@ -413,7 +413,7 @@ module Heathrow
         end
 
         @panes[:left].text = new_text
-        @panes[:left].refresh
+        @panes[:left].full_refresh
       end
       
       # Get date range string for a section's messages
@@ -458,9 +458,9 @@ module Heathrow
         name_part = "#{display_name}#{unread}"
 
         if selected
-          prefix.b.fg(color) + name_part.u.b.fg(color) + date_suffix.fg(245)
+          prefix.bd.fg(color) + name_part.ul.bd.fg(color) + date_suffix.fg(245)
         elsif section[:unread_count].to_i > 0
-          prefix.b.fg(color) + name_part.b.fg(color) + date_suffix.fg(245)
+          prefix.bd.fg(color) + name_part.bd.fg(color) + date_suffix.fg(245)
         else
           (prefix + name_part).fg(color) + date_suffix.fg(245)
         end
@@ -715,7 +715,7 @@ module Heathrow
         content = prefix_text + subject_text
         if @delete_marked&.include?(msg['id'])
           if selected
-            flags + content.u.fg(88) + padding
+            flags + content.ul.fg(88) + padding
           else
             flags + content.fg(88) + padding
           end
@@ -723,7 +723,7 @@ module Heathrow
           if selected
             lead = content[/\A */]
             rest = content[lead.length..]
-            flags + lead.b.fg(tag_color) + rest.u.b.fg(tag_color) + padding
+            flags + lead.bd.fg(tag_color) + rest.ul.bd.fg(tag_color) + padding
           else
             flags + content.fg(tag_color) + padding
           end
@@ -731,16 +731,16 @@ module Heathrow
           if selected
             lead = content[/\A */]
             rest = content[lead.length..]
-            flags + lead.b.fg(star_color) + rest.u.b.fg(star_color) + padding
+            flags + lead.bd.fg(star_color) + rest.ul.bd.fg(star_color) + padding
           else
             flags + content.fg(star_color) + padding
           end
         elsif selected
           lead = content[/\A */]
           rest = content[lead.length..]
-          flags + lead.b.fg(color) + rest.u.b.fg(color) + padding
+          flags + lead.bd.fg(color) + rest.ul.bd.fg(color) + padding
         elsif msg['is_read'].to_i == 0
-          flags + content.b.fg(color) + padding
+          flags + content.bd.fg(color) + padding
         else
           flags + content.fg(color) + padding
         end

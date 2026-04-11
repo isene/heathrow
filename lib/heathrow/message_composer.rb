@@ -163,7 +163,7 @@ module Heathrow
       template << "Date: #{format_date(original_date)}"
       template << "Subject: #{original_subject}"
       template << ""
-      template << original_content
+      template << original_content.gsub("\r", "")
 
       # Signature at the bottom
       sig = get_signature
