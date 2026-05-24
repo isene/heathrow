@@ -4279,7 +4279,7 @@ module Heathrow
 
     # Save folder shortcuts — configurable in ~/.heathrow/config.yml under save_folders:
     #   save_folders:
-    #     "1": "Geir.Personal"
+    #     "1": "Personal"
     #     "2": "AA.Archive"
     #     "3": "Projects.Archive"
     #     "4": "Work.Archive"
